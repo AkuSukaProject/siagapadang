@@ -63,3 +63,4 @@ class ObstructionReport(Base):
     description = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False) # Laporan dari petugas BPBD = True
     reported_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True)) # Kedaluwarsa 6 jam

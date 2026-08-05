@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from datetime import datetime, timedelta
 from app.database import get_db
 from app.models.domain import ObstructionReport
 from app.schemas.reports import ObstructionReportCreate, ObstructionReportResponse
@@ -19,7 +20,8 @@ def report_obstruction(
     new_report = ObstructionReport(
         device_id=device_id,
         location=point,
-        description=report.description
+        description=report.description,
+        expires_at=datetime.utcnow() + timedelta(hours=6)
     )
     db.add(new_report)
     db.commit()
@@ -34,7 +36,8 @@ def report_obstruction(
             func.Geography(ObstructionReport.location),
             func.Geography(func.ST_GeomFromText(f"POINT({report.longitude} {report.latitude})", 4326)),
             50.0  # 50 meter
-        )
+        ),
+        ObstructionReport.expires_at > func.now()
     ).distinct().count()
     
     # 3. Threshold 3 laporan unik

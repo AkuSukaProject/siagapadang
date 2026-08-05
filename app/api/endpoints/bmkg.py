@@ -19,7 +19,7 @@ def get_bmkg_status():
     current_time = time.time()
     
     # Return cache if valid
-    if bmkg_cache["data"] and (current_time - bmkg_cache["last_fetched"] < 30):
+    if bmkg_cache["data"] and (current_time - bmkg_cache["last_fetched"] < 300):
         return bmkg_cache["data"]
         
     try:
@@ -65,4 +65,18 @@ def get_bmkg_status():
         if bmkg_cache["data"]:
             return bmkg_cache["data"]
             
-        raise HTTPException(status_code=503, detail=f"Gagal mengambil data dari BMKG: {str(e)}")
+        return BMKGStatusResponse(
+            tanggal="",
+            jam="",
+            datetime="",
+            coordinates="",
+            lintang="",
+            bujur="",
+            magnitude="",
+            kedalaman="",
+            wilayah="",
+            potensi="Status BMKG belum tersedia",
+            dirasakan="",
+            shakemap="",
+            is_tsunami_potential=False
+        )
