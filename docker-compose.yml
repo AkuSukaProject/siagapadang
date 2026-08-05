@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  db:
+    image: kartoza/postgis:15-3.4
+    container_name: postgis_evakuasi
+    environment:
+      - POSTGRES_USER=sheva
+      - POSTGRES_PASS=gemastik2026
+      - POSTGRES_DB=evakuasi_padang
+      - ALLOW_IP_RANGE=0.0.0.0/0
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql
+    restart: on-failure
+
+volumes:
+  postgis_data:
