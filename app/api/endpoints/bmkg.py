@@ -1,7 +1,7 @@
 import urllib.request
 import json
 import time
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from app.schemas.bmkg import BMKGStatusResponse
 
 router = APIRouter()
@@ -60,7 +60,7 @@ def get_bmkg_status():
             
             return result
             
-    except Exception as e:
+    except Exception:
         # Fallback ke cache usang jika BMKG down
         if bmkg_cache["data"]:
             return bmkg_cache["data"]
