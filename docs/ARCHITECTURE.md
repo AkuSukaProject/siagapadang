@@ -65,12 +65,15 @@ GPS
   → rank rute dari tb_routes
   → ruas terkait dari tb_edges dalam satu kueri batch
   → normalisasi arah dan parsing WKT
+  → fallback koordinat node jika WKT ruas kosong
   → polyline + TES tujuan + ETA
   → UiState
   → peta, panah arah, dan hitung mundur
 ```
 
 `PolylineAssembler` menjadi satu-satunya tempat untuk parsing WKT dan pembalikan urutan koordinat ruas. Koordinat WKT dibaca sebagai `lon lat`.
+
+Peta dasar pengembangan memakai ubin OpenStreetMap saat jaringan tersedia. Style selalu memiliki latar polos lokal; marker dan polyline berasal dari data perangkat sehingga tetap dapat dirender ketika ubin tidak tersedia. Ubin luring produksi belum disertakan.
 
 ## Batas tanggung jawab
 
@@ -99,4 +102,3 @@ MapLibre dibungkus dengan `AndroidView`. Siklus hidup `MapView` harus mengikuti 
 - Uji DAO terhadap salinan database aset.
 - Uji perangkat dalam mode pesawat untuk alur end-to-end.
 - Ukur waktu dari permintaan lokasi yang tersedia sampai arahan siap menggunakan pencatatan waktu nyata; jangan mengasumsikan angka performa.
-
