@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.domain import DataVersion, Shelter, InundationZone
+from app.models.domain import DataVersion, EvacuationPoint, InundationZone
 from app.schemas.sync import SyncCheckResponse, SyncDataResponse
 import json
 
@@ -38,7 +38,7 @@ def get_sync_shelters(db: Session = Depends(get_db)):
     if not latest_shelter:
         raise HTTPException(status_code=404, detail="No shelter data available.")
         
-    shelters = db.query(Shelter).all()
+    shelters = db.query(EvacuationPoint).all()
     
     features = []
     for s in shelters:
@@ -57,7 +57,7 @@ def get_sync_shelters(db: Session = Depends(get_db)):
                 "name": s.name,
                 "capacity": s.capacity,
                 "elevation_m": s.elevation_m,
-                "status": s.status,
+                "status": "active" if s.is_operational else "inactive",
                 "entrance_geometry": entrance_geom
             }
         })

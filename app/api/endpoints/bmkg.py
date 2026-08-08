@@ -1,6 +1,7 @@
 import urllib.request
 import json
 import time
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter
 from app.schemas.bmkg import BMKGStatusResponse
 

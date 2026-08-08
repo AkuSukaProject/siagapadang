@@ -20,6 +20,7 @@ def report_obstruction(
     new_report = ObstructionReport(
         device_id=device_id,
         location=point,
+        edge_id=report.edge_id,
         description=report.description,
         expires_at=datetime.utcnow() + timedelta(hours=6)
     )
@@ -45,6 +46,9 @@ def report_obstruction(
     
     # Jika is_blocked = True, di sistem nyata kita akan memasukkan data ini 
     # ke antrean Graph Update (RabbitMQ / Kafka) untuk disinkronkan ke HP warga.
+    if is_blocked:
+        new_report.is_verified = True
+        db.commit()
     
     return ObstructionReportResponse(
         status="success",
