@@ -3,10 +3,9 @@
     <style name="Theme.SiagaPadang" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#071A20</item>
+        <item name="android:windowBackground">#003049</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#071A20</item>
-        <item name="android:statusBarColor">#071A20</item>
+        <item name="android:navigationBarColor">#003049</item>
+        <item name="android:statusBarColor">#003049</item>
     </style>
 </resources>
-

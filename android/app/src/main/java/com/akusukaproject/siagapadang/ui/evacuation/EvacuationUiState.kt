@@ -2,6 +2,7 @@ package com.akusukaproject.siagapadang.ui.evacuation
 
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 
 data class EvacuationUiState(
     val hasLocationPermission: Boolean = false,
@@ -9,8 +10,8 @@ data class EvacuationUiState(
     val currentLocation: GeoCoordinate? = null,
     val locationAccuracyMeters: Float? = null,
     val route: EvacuationRoute? = null,
+    val guidance: RouteGuidanceSnapshot? = null,
     val deviceHeadingDegrees: Float? = null,
-    val arrowRotationDegrees: Float = 0f,
     val remainingEvacuationSeconds: Int = EVACUATION_WINDOW_SECONDS,
     val errorMessage: String? = null,
     val compassMessage: String? = null,
@@ -22,4 +23,3 @@ data class EvacuationUiState(
         const val EVACUATION_WINDOW_SECONDS = 20 * 60
     }
 }
-

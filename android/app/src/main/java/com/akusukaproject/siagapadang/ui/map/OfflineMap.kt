@@ -1,14 +1,21 @@
 package com.akusukaproject.siagapadang.ui.map
 
 import android.content.ComponentCallbacks2
+import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -16,23 +23,29 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.domain.NearestNodeFinder
+import com.akusukaproject.siagapadang.R
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory.circleColor
-import org.maplibre.android.style.layers.PropertyFactory.circleRadius
-import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
-import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
+import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.LineString
@@ -62,9 +75,9 @@ private const val DEVELOPMENT_MAP_STYLE = """
           "type": "raster",
           "source": "openstreetmap",
           "paint": {
-            "raster-opacity": 0.72,
-            "raster-saturation": -0.55,
-            "raster-brightness-max": 0.68
+            "raster-opacity": 0.90,
+            "raster-saturation": -0.35,
+            "raster-brightness-max": 0.88
           }
         }
       ]
@@ -76,28 +89,104 @@ private const val DEVELOPMENT_MAP_STYLE = """
 fun OfflineMap(
     routeCoordinates: List<GeoCoordinate>,
     currentLocation: GeoCoordinate?,
+    destinationLocation: GeoCoordinate?,
+    destinationName: String?,
+    destinationDistanceLabel: String?,
+    deviceHeadingDegrees: Float?,
+    followUserLocation: Boolean,
+    recenterRequest: Int,
+    onUserMapGesture: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val latestRoute = rememberUpdatedState(routeCoordinates)
     val latestLocation = rememberUpdatedState(currentLocation)
-    var hasCenteredOnUser by remember { mutableStateOf(false) }
+    val latestDestination = rememberUpdatedState(destinationLocation)
+    val latestDestinationName = rememberUpdatedState(destinationName)
+    val latestDestinationDistance = rememberUpdatedState(destinationDistanceLabel)
+    val latestHeading = rememberUpdatedState(deviceHeadingDegrees)
+    val latestFollowUser = rememberUpdatedState(followUserLocation)
+    val latestOnUserMapGesture = rememberUpdatedState(onUserMapGesture)
+    val userMarkerBitmap = remember(context) { createUserMarkerBitmap(context) }
+    val destinationAnnotationBitmap = remember(
+        context,
+        destinationName,
+        destinationDistanceLabel,
+    ) {
+        createDestinationAnnotationBitmap(
+            context = context,
+            destinationName = destinationName ?: "Tujuan evakuasi",
+            distanceLabel = destinationDistanceLabel.orEmpty(),
+        )
+    }
+    val cameraTracker = remember { CameraTracker() }
     val mapView = remember {
-        MapView(context).apply {
+        val mapOptions = MapLibreMapOptions.createFromAttributes(context)
+            .textureMode(true)
+        MapView(context, mapOptions).apply {
             onCreate(null)
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN ->
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_MOVE -> {
+                        if (latestFollowUser.value) {
+                            cameraTracker.isFollowing = false
+                            latestOnUserMapGesture.value()
+                        }
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL,
+                    -> view.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
             getMapAsync { map ->
                 map.cameraPosition = CameraPosition.Builder()
                     .target(DEFAULT_PADANG_CENTER)
                     .zoom(DEFAULT_ZOOM)
                     .build()
                 map.uiSettings.isCompassEnabled = false
+                map.uiSettings.isRotateGesturesEnabled = false
+                map.uiSettings.isScrollGesturesEnabled = true
+                map.uiSettings.isHorizontalScrollGesturesEnabled = true
+                map.uiSettings.isZoomGesturesEnabled = true
+                map.uiSettings.isDoubleTapGesturesEnabled = true
+                map.uiSettings.isQuickZoomGesturesEnabled = true
+                map.addOnCameraMoveStartedListener { reason ->
+                    if (
+                        reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE &&
+                        latestFollowUser.value
+                    ) {
+                        cameraTracker.isFollowing = false
+                        latestOnUserMapGesture.value()
+                    }
+                }
                 map.setStyle(Style.Builder().fromJson(DEVELOPMENT_MAP_STYLE)) { style ->
                     updateMapOverlays(
                         style = style,
                         routeCoordinates = latestRoute.value,
                         currentLocation = latestLocation.value,
+                        destinationLocation = latestDestination.value,
+                        destinationAnnotationBitmap = createDestinationAnnotationBitmap(
+                            context = context,
+                            destinationName = latestDestinationName.value ?: "Tujuan evakuasi",
+                            distanceLabel = latestDestinationDistance.value.orEmpty(),
+                        ),
+                        userMarkerBitmap = userMarkerBitmap,
                     )
+                    if (latestFollowUser.value) latestLocation.value?.let { location ->
+                        updateNavigationCamera(
+                            map = map,
+                            location = location,
+                            headingDegrees = latestHeading.value,
+                            tracker = cameraTracker,
+                            animate = false,
+                            force = true,
+                        )
+                        cameraTracker.isFollowing = true
+                    }
                 }
             }
         }
@@ -146,17 +235,29 @@ fun OfflineMap(
         update = { view ->
             view.getMapAsync { map ->
                 map.style?.let { style ->
-                    updateMapOverlays(style, routeCoordinates, currentLocation)
-                }
-                if (!hasCenteredOnUser && currentLocation != null) {
-                    map.animateCamera(
-                        CameraUpdateFactory.newLatLngZoom(
-                            LatLng(currentLocation.latitude, currentLocation.longitude),
-                            USER_LOCATION_ZOOM,
-                        ),
-                        CAMERA_ANIMATION_MILLIS,
+                    updateMapOverlays(
+                        style = style,
+                        routeCoordinates = routeCoordinates,
+                        currentLocation = currentLocation,
+                        destinationLocation = destinationLocation,
+                        destinationAnnotationBitmap = destinationAnnotationBitmap,
+                        userMarkerBitmap = userMarkerBitmap,
                     )
-                    hasCenteredOnUser = true
+                }
+                if (followUserLocation) currentLocation?.let { location ->
+                    val forceRecenter = recenterRequest != cameraTracker.recenterRequest
+                    updateNavigationCamera(
+                        map = map,
+                        location = location,
+                        headingDegrees = deviceHeadingDegrees,
+                        tracker = cameraTracker,
+                        animate = true,
+                        force = !cameraTracker.isFollowing || forceRecenter,
+                    )
+                    cameraTracker.isFollowing = true
+                    cameraTracker.recenterRequest = recenterRequest
+                } else {
+                    cameraTracker.isFollowing = false
                 }
             }
         },
@@ -168,6 +269,9 @@ private fun updateMapOverlays(
     style: Style,
     routeCoordinates: List<GeoCoordinate>,
     currentLocation: GeoCoordinate?,
+    destinationLocation: GeoCoordinate?,
+    destinationAnnotationBitmap: Bitmap,
+    userMarkerBitmap: Bitmap,
 ) {
     if (routeCoordinates.size >= 2) {
         val geometry = LineString.fromLngLats(
@@ -180,7 +284,7 @@ private fun updateMapOverlays(
             style.addSource(GeoJsonSource(ROUTE_SOURCE_ID, geometry))
             style.addLayer(
                 LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-                    lineColor("#FFC857"),
+                    lineColor("#7A7FFF"),
                     lineWidth(7f),
                     lineOpacity(0.96f),
                     lineCap(Property.LINE_CAP_ROUND),
@@ -192,25 +296,200 @@ private fun updateMapOverlays(
         }
     }
 
+    destinationLocation?.let { coordinate ->
+        val feature = Feature.fromGeometry(
+            Point.fromLngLat(coordinate.longitude, coordinate.latitude),
+        )
+        val existingDestinationSource = style.getSource(DESTINATION_SOURCE_ID) as? GeoJsonSource
+        style.addImage(DESTINATION_IMAGE_ID, destinationAnnotationBitmap)
+        if (existingDestinationSource == null) {
+            style.addSource(GeoJsonSource(DESTINATION_SOURCE_ID, feature))
+            style.addLayer(
+                SymbolLayer(DESTINATION_LAYER_ID, DESTINATION_SOURCE_ID).withProperties(
+                    iconImage(DESTINATION_IMAGE_ID),
+                    iconSize(1f),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                ),
+            )
+        } else {
+            existingDestinationSource.setGeoJson(feature)
+        }
+    }
+
     currentLocation?.let { coordinate ->
         val feature = Feature.fromGeometry(
             Point.fromLngLat(coordinate.longitude, coordinate.latitude),
         )
         val existingLocationSource = style.getSource(LOCATION_SOURCE_ID) as? GeoJsonSource
         if (existingLocationSource == null) {
+            style.addImage(USER_LOCATION_IMAGE_ID, userMarkerBitmap)
             style.addSource(GeoJsonSource(LOCATION_SOURCE_ID, feature))
             style.addLayer(
-                CircleLayer(LOCATION_LAYER_ID, LOCATION_SOURCE_ID).withProperties(
-                    circleColor("#3DDCFF"),
-                    circleRadius(8f),
-                    circleStrokeColor("#FFFFFF"),
-                    circleStrokeWidth(3f),
+                SymbolLayer(LOCATION_LAYER_ID, LOCATION_SOURCE_ID).withProperties(
+                    iconImage(USER_LOCATION_IMAGE_ID),
+                    iconSize(1f),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                 ),
             )
         } else {
             existingLocationSource.setGeoJson(feature)
         }
     }
+}
+
+private fun updateNavigationCamera(
+    map: org.maplibre.android.maps.MapLibreMap,
+    location: GeoCoordinate,
+    headingDegrees: Float?,
+    tracker: CameraTracker,
+    animate: Boolean,
+    force: Boolean = false,
+) {
+    val normalizedHeading = ((headingDegrees ?: tracker.headingDegrees) % 360f + 360f) % 360f
+    val movedMeters = tracker.location?.let { previous ->
+        NearestNodeFinder.distanceMeters(previous, location)
+    } ?: Double.POSITIVE_INFINITY
+    val headingDelta = angularDifferenceDegrees(tracker.headingDegrees, normalizedHeading)
+    if (!force && movedMeters < MIN_CAMERA_MOVE_METERS && headingDelta < MIN_CAMERA_TURN_DEGREES) return
+
+    val cameraPosition = CameraPosition.Builder()
+        .target(LatLng(location.latitude, location.longitude))
+        .zoom(USER_LOCATION_ZOOM)
+        .bearing(normalizedHeading.toDouble())
+        .build()
+    val update = CameraUpdateFactory.newCameraPosition(cameraPosition)
+    if (animate && tracker.location != null) {
+        map.easeCamera(update, CAMERA_ANIMATION_MILLIS)
+    } else {
+        map.moveCamera(update)
+    }
+    tracker.location = location
+    tracker.headingDegrees = normalizedHeading
+}
+
+private fun angularDifferenceDegrees(first: Float, second: Float): Float {
+    val difference = kotlin.math.abs(first - second) % 360f
+    return minOf(difference, 360f - difference)
+}
+
+private fun createUserMarkerBitmap(context: Context): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val outerSize = (USER_MARKER_OUTER_DP * density).toInt().coerceAtLeast(1)
+    val leafSize = (USER_MARKER_LEAF_DP * density).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(outerSize, outerSize, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = outerSize / 2f
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(230, 255, 255, 255)
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, center - density, paint)
+    paint.apply {
+        color = Color.rgb(9, 78, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = density
+    }
+    canvas.drawCircle(center, center, center - density, paint)
+
+    context.getDrawable(R.drawable.ic_figma_map_arrow)?.let { drawable ->
+        val inset = (outerSize - leafSize) / 2
+        drawable.setBounds(inset, inset, inset + leafSize, inset + leafSize)
+        drawable.draw(canvas)
+    }
+    return bitmap
+}
+
+private fun createDestinationAnnotationBitmap(
+    context: Context,
+    destinationName: String,
+    distanceLabel: String,
+): Bitmap {
+    val density = context.resources.displayMetrics.density
+    fun px(dp: Float): Float = dp * density
+
+    val width = px(180f).toInt()
+    val cardHeight = px(62f)
+    val pointerHeight = px(10f)
+    val pinSize = px(34f).toInt()
+    val totalHeight = (cardHeight + pointerHeight + pinSize).toInt()
+    val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val centerX = width / 2f
+    val cardBounds = RectF(px(1f), px(1f), width - px(1f), cardHeight)
+
+    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.FILL
+        setShadowLayer(px(3f), 0f, px(1f), Color.argb(70, 0, 0, 0))
+    }
+    canvas.drawRoundRect(cardBounds, px(10f), px(10f), cardPaint)
+    val pointer = Path().apply {
+        moveTo(centerX - px(9f), cardHeight - px(1f))
+        lineTo(centerX, cardHeight + pointerHeight)
+        lineTo(centerX + px(9f), cardHeight - px(1f))
+        close()
+    }
+    canvas.drawPath(pointer, cardPaint)
+
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(90, 126, 128)
+        style = Paint.Style.STROKE
+        strokeWidth = px(1f)
+    }
+    canvas.drawRoundRect(cardBounds, px(10f), px(10f), borderPaint)
+    canvas.drawPath(pointer, borderPaint)
+
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(12, 24, 31)
+        textSize = px(14f)
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val distancePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(0, 48, 73)
+        textSize = px(13f)
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val textStart = px(13f)
+    val textWidth = width - px(26f)
+    canvas.drawText(
+        fitText(destinationName.uppercase(), namePaint, textWidth),
+        textStart,
+        px(25f),
+        namePaint,
+    )
+    if (distanceLabel.isNotBlank()) {
+        canvas.drawText("â‰ˆ $distanceLabel", textStart, px(48f), distancePaint)
+    }
+
+    context.getDrawable(R.drawable.ic_figma_destination)?.let { drawable ->
+        val left = ((width - pinSize) / 2f).toInt()
+        val top = (cardHeight + pointerHeight).toInt()
+        drawable.setBounds(left, top, left + pinSize, top + pinSize)
+        drawable.draw(canvas)
+    }
+    return bitmap
+}
+
+private fun fitText(text: String, paint: Paint, maxWidth: Float): String {
+    if (paint.measureText(text) <= maxWidth) return text
+    val ellipsis = "â€¦"
+    var end = text.length
+    while (end > 0 && paint.measureText(text.substring(0, end) + ellipsis) > maxWidth) {
+        end--
+    }
+    return text.substring(0, end).trimEnd() + ellipsis
+}
+
+private class CameraTracker {
+    var location: GeoCoordinate? = null
+    var headingDegrees: Float = 0f
+    var isFollowing: Boolean = false
+    var recenterRequest: Int = -1
 }
 
 private class MapViewLifecycleController(
@@ -270,8 +549,16 @@ private class MapViewLifecycleController(
 private val DEFAULT_PADANG_CENTER = LatLng(-0.9471, 100.4172)
 private const val DEFAULT_ZOOM = 12.5
 private const val USER_LOCATION_ZOOM = 16.0
-private const val CAMERA_ANIMATION_MILLIS = 700
+private const val CAMERA_ANIMATION_MILLIS = 180
+private const val MIN_CAMERA_MOVE_METERS = 1.5
+private const val MIN_CAMERA_TURN_DEGREES = 2f
+private const val USER_MARKER_OUTER_DP = 51f
+private const val USER_MARKER_LEAF_DP = 39f
 private const val ROUTE_SOURCE_ID = "evacuation-route-source"
 private const val ROUTE_LAYER_ID = "evacuation-route-layer"
 private const val LOCATION_SOURCE_ID = "user-location-source"
 private const val LOCATION_LAYER_ID = "user-location-layer"
+private const val USER_LOCATION_IMAGE_ID = "user-location-navigation-image"
+private const val DESTINATION_SOURCE_ID = "evacuation-destination-source"
+private const val DESTINATION_LAYER_ID = "evacuation-destination-layer"
+private const val DESTINATION_IMAGE_ID = "evacuation-destination-annotation-image"

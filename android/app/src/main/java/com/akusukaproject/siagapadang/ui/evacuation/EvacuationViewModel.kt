@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
-import com.akusukaproject.siagapadang.domain.BearingCalculator
+import com.akusukaproject.siagapadang.domain.RouteGuidanceCalculator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,7 +64,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 repository.loadRoute(currentRoute.originNodeId, nextRank)
             }.onSuccess { route ->
                 mutableUiState.update { state ->
-                    withArrowRotation(state.copy(route = route, isLoadingRoute = false))
+                    withGuidance(state.copy(route = route, isLoadingRoute = false))
                 }
             }.onFailure { error ->
                 mutableUiState.update {
@@ -88,7 +88,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     .collect { deviceLocation ->
                         mutableUiState.update { state ->
-                            withArrowRotation(
+                            withGuidance(
                                 state.copy(
                                     currentLocation = deviceLocation.coordinate,
                                     locationAccuracyMeters = deviceLocation.accuracyMeters,
@@ -110,11 +110,9 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     .collect { heading ->
                         mutableUiState.update { state ->
-                            withArrowRotation(
-                                state.copy(
-                                    deviceHeadingDegrees = heading,
-                                    compassMessage = null,
-                                ),
+                            state.copy(
+                                deviceHeadingDegrees = heading,
+                                compassMessage = null,
                             )
                         }
                     }
@@ -134,7 +132,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 val elapsedMillis = System.currentTimeMillis() - startedAt
                 logRouteTiming(elapsedMillis)
                 mutableUiState.update { state ->
-                    withArrowRotation(
+                    withGuidance(
                         state.copy(
                             route = route,
                             isLoadingRoute = false,
@@ -169,18 +167,11 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun withArrowRotation(state: EvacuationUiState): EvacuationUiState {
+    private fun withGuidance(state: EvacuationUiState): EvacuationUiState {
         val location = state.currentLocation ?: return state
-        val heading = state.deviceHeadingDegrees ?: return state
-        val target = state.route?.coordinates?.let { routeCoordinates ->
-            BearingCalculator.nextTarget(location, routeCoordinates)
-        } ?: return state
-        val targetBearing = BearingCalculator.bearingDegrees(location, target)
+        val routeCoordinates = state.route?.coordinates ?: return state
         return state.copy(
-            arrowRotationDegrees = BearingCalculator.relativeRotationDegrees(
-                targetBearing = targetBearing,
-                deviceHeading = heading.toDouble(),
-            ),
+            guidance = RouteGuidanceCalculator.calculate(location, routeCoordinates),
         )
     }
 
