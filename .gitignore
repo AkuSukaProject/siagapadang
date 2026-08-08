@@ -1,8 +1,34 @@
+# Basis data lokal dan ubin peta (didistribusikan di luar Git)
+*.db
+*.sqlite
+*.mbtiles
+*.pmtiles
 
-# Experimental Scripts
-scripts/download_jurnal.py
-scripts/generate_fixed_csv.py
-scripts/geocode_*.py
-scripts/gmaps_scraper.py
-scripts/read_excel*.py
-scripts/test_photon.py
+# Android
+build/
+.gradle/
+local.properties
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+
+# Python
+__pycache__/
+*.pyc
+env/
+venv/
+.env
+
+# Data spasial mentah
+spatial/data/
+*.graphml
+*.osm.pbf
+
+# IDE dan sistem operasi
+.idea/
+.vscode/
+.DS_Store
