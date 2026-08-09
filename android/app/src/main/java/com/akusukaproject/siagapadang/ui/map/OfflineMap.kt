@@ -465,7 +465,7 @@ private fun createUserMarkerBitmap(context: Context): Bitmap {
     val canvas = Canvas(bitmap)
     val center = outerSize / 2f
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 255, 255, 255)
+        color = Color.argb(USER_MARKER_BACKGROUND_ALPHA, 255, 255, 255)
         style = Paint.Style.FILL
     }
     canvas.drawCircle(center, center, center - density, paint)
@@ -637,6 +637,7 @@ private const val MIN_CAMERA_MOVE_METERS = 1.5
 private const val MIN_CAMERA_TURN_DEGREES = 2f
 private const val USER_MARKER_OUTER_DP = 51f
 private const val USER_MARKER_LEAF_DP = 39f
+private const val USER_MARKER_BACKGROUND_ALPHA = 145
 private const val ROUTE_SOURCE_ID = "evacuation-route-source"
 private const val ROUTE_LAYER_ID = "evacuation-route-layer"
 private const val PREVIOUS_ROUTES_SOURCE_ID = "previous-evacuation-routes-source"

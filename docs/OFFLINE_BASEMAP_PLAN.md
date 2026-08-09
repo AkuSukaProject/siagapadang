@@ -65,6 +65,28 @@ Target awal APK khusus `arm64-v8a` tanpa basemap offline diperkirakan sekitar
 34 MB. Angka final harus diukur dari artefak release, bukan dijadikan klaim
 sebelum build tersedia.
 
+### Hasil optimasi packaging 9 Agustus 2026
+
+Optimasi berikut sudah diterapkan:
+
+- APK dipisah menjadi `arm64-v8a`, `armeabi-v7a`, `x86`, dan `x86_64`.
+- APK universal tetap dibuat untuk kebutuhan kompatibilitas pengembangan.
+- Build release memakai R8 dan resource shrinking.
+- Cache ambient MapLibre dibatasi maksimum 16 MB.
+
+Hasil build aktual:
+
+| Artefak | Ukuran | Keterangan |
+|---|---:|---|
+| Debug `arm64-v8a` | 33,67 MB | Dapat dipasang untuk pengujian HP modern |
+| Debug `armeabi-v7a` | 30,48 MB | Untuk perangkat ARM 32-bit |
+| Debug universal | 67,90 MB | Membawa seluruh ABI |
+| Release `arm64-v8a` | 20,26 MB | Belum ditandatangani |
+| Release universal | 54,50 MB | Belum ditandatangani |
+
+Sebelum distribusi release, tim harus membuat dan menyimpan signing key secara
+aman. APK release unsigned tidak boleh dibagikan sebagai artefak instalasi.
+
 ## Kriteria selesai
 
 - Basemap tampil pada mode pesawat di seluruh cakupan MVP.
