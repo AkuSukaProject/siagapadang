@@ -144,7 +144,7 @@ object RouteGuidanceCalculator {
 
     private const val SAMPLE_SPACING_METERS = 12.0
     private const val MIN_MANEUVER_SPACING_METERS = 25.0
-    private const val ARRIVAL_DISTANCE_METERS = 20
+    private const val ARRIVAL_DISTANCE_METERS = 0
     private const val MIN_TURN_ANGLE_DEGREES = 28.0
     private const val REGULAR_TURN_ANGLE_DEGREES = 60.0
     private const val SHARP_TURN_ANGLE_DEGREES = 125.0

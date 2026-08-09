@@ -28,6 +28,7 @@ import com.akusukaproject.siagapadang.R
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
@@ -48,6 +49,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
@@ -88,6 +90,7 @@ private const val DEVELOPMENT_MAP_STYLE = """
 @Composable
 fun OfflineMap(
     routeCoordinates: List<GeoCoordinate>,
+    previousRouteCoordinates: List<List<GeoCoordinate>>,
     currentLocation: GeoCoordinate?,
     destinationLocation: GeoCoordinate?,
     destinationName: String?,
@@ -95,12 +98,14 @@ fun OfflineMap(
     deviceHeadingDegrees: Float?,
     followUserLocation: Boolean,
     recenterRequest: Int,
+    routeOverviewRequest: Int,
     onUserMapGesture: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val latestRoute = rememberUpdatedState(routeCoordinates)
+    val latestPreviousRoutes = rememberUpdatedState(previousRouteCoordinates)
     val latestLocation = rememberUpdatedState(currentLocation)
     val latestDestination = rememberUpdatedState(destinationLocation)
     val latestDestinationName = rememberUpdatedState(destinationName)
@@ -148,7 +153,7 @@ fun OfflineMap(
                     .zoom(DEFAULT_ZOOM)
                     .build()
                 map.uiSettings.isCompassEnabled = false
-                map.uiSettings.isRotateGesturesEnabled = false
+                map.uiSettings.isRotateGesturesEnabled = true
                 map.uiSettings.isScrollGesturesEnabled = true
                 map.uiSettings.isHorizontalScrollGesturesEnabled = true
                 map.uiSettings.isZoomGesturesEnabled = true
@@ -167,6 +172,7 @@ fun OfflineMap(
                     updateMapOverlays(
                         style = style,
                         routeCoordinates = latestRoute.value,
+                        previousRouteCoordinates = latestPreviousRoutes.value,
                         currentLocation = latestLocation.value,
                         destinationLocation = latestDestination.value,
                         destinationAnnotationBitmap = createDestinationAnnotationBitmap(
@@ -238,6 +244,7 @@ fun OfflineMap(
                     updateMapOverlays(
                         style = style,
                         routeCoordinates = routeCoordinates,
+                        previousRouteCoordinates = previousRouteCoordinates,
                         currentLocation = currentLocation,
                         destinationLocation = destinationLocation,
                         destinationAnnotationBitmap = destinationAnnotationBitmap,
@@ -245,19 +252,29 @@ fun OfflineMap(
                     )
                 }
                 if (followUserLocation) currentLocation?.let { location ->
-                    val forceRecenter = recenterRequest != cameraTracker.recenterRequest
-                    updateNavigationCamera(
-                        map = map,
-                        location = location,
-                        headingDegrees = deviceHeadingDegrees,
-                        tracker = cameraTracker,
-                        animate = true,
-                        force = !cameraTracker.isFollowing || forceRecenter,
-                    )
-                    cameraTracker.isFollowing = true
-                    cameraTracker.recenterRequest = recenterRequest
+                    if (routeOverviewRequest != cameraTracker.routeOverviewRequest) {
+                        showRouteOverview(map, routeCoordinates, location)
+                        cameraTracker.isFollowing = false
+                        cameraTracker.routeOverviewRequest = routeOverviewRequest
+                    } else {
+                        val forceRecenter = recenterRequest != cameraTracker.recenterRequest
+                        updateNavigationCamera(
+                            map = map,
+                            location = location,
+                            headingDegrees = deviceHeadingDegrees,
+                            tracker = cameraTracker,
+                            animate = true,
+                            force = !cameraTracker.isFollowing || forceRecenter,
+                        )
+                        cameraTracker.isFollowing = true
+                        cameraTracker.recenterRequest = recenterRequest
+                    }
                 } else {
                     cameraTracker.isFollowing = false
+                    if (routeOverviewRequest != cameraTracker.routeOverviewRequest) {
+                        showRouteOverview(map, routeCoordinates, currentLocation)
+                        cameraTracker.routeOverviewRequest = routeOverviewRequest
+                    }
                 }
             }
         },
@@ -265,14 +282,36 @@ fun OfflineMap(
     )
 }
 
+private fun showRouteOverview(
+    map: org.maplibre.android.maps.MapLibreMap,
+    routeCoordinates: List<GeoCoordinate>,
+    currentLocation: GeoCoordinate?,
+) {
+    if (routeCoordinates.size < 2) return
+    val points = routeCoordinates.map { coordinate ->
+        LatLng(coordinate.latitude, coordinate.longitude)
+    }.toMutableList()
+    currentLocation?.let { location ->
+        points += LatLng(location.latitude, location.longitude)
+    }
+    val bounds = LatLngBounds.Builder().includes(points).build()
+    map.easeCamera(
+        CameraUpdateFactory.newLatLngBounds(bounds, ROUTE_OVERVIEW_PADDING_PX),
+        ROUTE_OVERVIEW_ANIMATION_MILLIS,
+    )
+}
+
 private fun updateMapOverlays(
     style: Style,
     routeCoordinates: List<GeoCoordinate>,
+    previousRouteCoordinates: List<List<GeoCoordinate>>,
     currentLocation: GeoCoordinate?,
     destinationLocation: GeoCoordinate?,
     destinationAnnotationBitmap: Bitmap,
     userMarkerBitmap: Bitmap,
 ) {
+    updatePreviousRouteOverlays(style, previousRouteCoordinates)
+
     if (routeCoordinates.size >= 2) {
         val geometry = LineString.fromLngLats(
             routeCoordinates.map { coordinate ->
@@ -282,15 +321,20 @@ private fun updateMapOverlays(
         val existingRouteSource = style.getSource(ROUTE_SOURCE_ID) as? GeoJsonSource
         if (existingRouteSource == null) {
             style.addSource(GeoJsonSource(ROUTE_SOURCE_ID, geometry))
-            style.addLayer(
-                LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-                    lineColor("#7A7FFF"),
-                    lineWidth(7f),
-                    lineOpacity(0.96f),
-                    lineCap(Property.LINE_CAP_ROUND),
-                    lineJoin(Property.LINE_JOIN_ROUND),
-                ),
+            val routeLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
+                lineColor("#7A7FFF"),
+                lineWidth(7f),
+                lineOpacity(0.96f),
+                lineCap(Property.LINE_CAP_ROUND),
+                lineJoin(Property.LINE_JOIN_ROUND),
             )
+            when {
+                style.getLayer(DESTINATION_LAYER_ID) != null ->
+                    style.addLayerBelow(routeLayer, DESTINATION_LAYER_ID)
+                style.getLayer(LOCATION_LAYER_ID) != null ->
+                    style.addLayerBelow(routeLayer, LOCATION_LAYER_ID)
+                else -> style.addLayer(routeLayer)
+            }
         } else {
             existingRouteSource.setGeoJson(geometry)
         }
@@ -339,6 +383,42 @@ private fun updateMapOverlays(
         } else {
             existingLocationSource.setGeoJson(feature)
         }
+    }
+}
+
+private fun updatePreviousRouteOverlays(
+    style: Style,
+    previousRouteCoordinates: List<List<GeoCoordinate>>,
+) {
+    val features = previousRouteCoordinates.mapNotNull { coordinates ->
+        if (coordinates.size < 2) return@mapNotNull null
+        Feature.fromGeometry(
+            LineString.fromLngLats(
+                coordinates.map { coordinate ->
+                    Point.fromLngLat(coordinate.longitude, coordinate.latitude)
+                },
+            ),
+        )
+    }
+    val featureCollection = FeatureCollection.fromFeatures(features)
+    val existingSource = style.getSource(PREVIOUS_ROUTES_SOURCE_ID) as? GeoJsonSource
+    if (existingSource == null) {
+        if (features.isEmpty()) return
+        style.addSource(GeoJsonSource(PREVIOUS_ROUTES_SOURCE_ID, featureCollection))
+        val layer = LineLayer(PREVIOUS_ROUTES_LAYER_ID, PREVIOUS_ROUTES_SOURCE_ID).withProperties(
+            lineColor("#7D8588"),
+            lineWidth(5f),
+            lineOpacity(0.72f),
+            lineCap(Property.LINE_CAP_ROUND),
+            lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        if (style.getLayer(ROUTE_LAYER_ID) != null) {
+            style.addLayerBelow(layer, ROUTE_LAYER_ID)
+        } else {
+            style.addLayer(layer)
+        }
+    } else {
+        existingSource.setGeoJson(featureCollection)
     }
 }
 
@@ -463,7 +543,7 @@ private fun createDestinationAnnotationBitmap(
         namePaint,
     )
     if (distanceLabel.isNotBlank()) {
-        canvas.drawText("â‰ˆ $distanceLabel", textStart, px(48f), distancePaint)
+        canvas.drawText("≈ $distanceLabel", textStart, px(48f), distancePaint)
     }
 
     context.getDrawable(R.drawable.ic_figma_destination)?.let { drawable ->
@@ -477,7 +557,7 @@ private fun createDestinationAnnotationBitmap(
 
 private fun fitText(text: String, paint: Paint, maxWidth: Float): String {
     if (paint.measureText(text) <= maxWidth) return text
-    val ellipsis = "â€¦"
+    val ellipsis = "…"
     var end = text.length
     while (end > 0 && paint.measureText(text.substring(0, end) + ellipsis) > maxWidth) {
         end--
@@ -490,6 +570,7 @@ private class CameraTracker {
     var headingDegrees: Float = 0f
     var isFollowing: Boolean = false
     var recenterRequest: Int = -1
+    var routeOverviewRequest: Int = 0
 }
 
 private class MapViewLifecycleController(
@@ -549,6 +630,8 @@ private class MapViewLifecycleController(
 private val DEFAULT_PADANG_CENTER = LatLng(-0.9471, 100.4172)
 private const val DEFAULT_ZOOM = 12.5
 private const val USER_LOCATION_ZOOM = 16.0
+private const val ROUTE_OVERVIEW_PADDING_PX = 120
+private const val ROUTE_OVERVIEW_ANIMATION_MILLIS = 900
 private const val CAMERA_ANIMATION_MILLIS = 180
 private const val MIN_CAMERA_MOVE_METERS = 1.5
 private const val MIN_CAMERA_TURN_DEGREES = 2f
@@ -556,6 +639,8 @@ private const val USER_MARKER_OUTER_DP = 51f
 private const val USER_MARKER_LEAF_DP = 39f
 private const val ROUTE_SOURCE_ID = "evacuation-route-source"
 private const val ROUTE_LAYER_ID = "evacuation-route-layer"
+private const val PREVIOUS_ROUTES_SOURCE_ID = "previous-evacuation-routes-source"
+private const val PREVIOUS_ROUTES_LAYER_ID = "previous-evacuation-routes-layer"
 private const val LOCATION_SOURCE_ID = "user-location-source"
 private const val LOCATION_LAYER_ID = "user-location-layer"
 private const val USER_LOCATION_IMAGE_ID = "user-location-navigation-image"

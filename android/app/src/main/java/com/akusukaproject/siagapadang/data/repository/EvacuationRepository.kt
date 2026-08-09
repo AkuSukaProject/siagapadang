@@ -4,6 +4,7 @@ import com.akusukaproject.siagapadang.data.local.EvacuationDao
 import com.akusukaproject.siagapadang.data.local.RouteRow
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.domain.AlternativeRouteSelector
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
 import com.akusukaproject.siagapadang.domain.PolylineAssembler
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,23 @@ class EvacuationRepository(
                 GeoCoordinate(latitude = tes.lat, longitude = tes.lon)
             },
         )
+    }
+
+    suspend fun findAlternativeRoute(
+        location: GeoCoordinate,
+        currentRoute: EvacuationRoute,
+        excludedDestinationNames: Set<String>,
+    ): EvacuationRoute {
+        val nearestNode = findNearestNode(location)
+        val candidates = (1..3).mapNotNull { rank ->
+            runCatching { loadRoute(nearestNode.nodeId, rank) }.getOrNull()
+        }
+        return AlternativeRouteSelector.select(
+            currentLocation = location,
+            currentRoute = currentRoute,
+            candidates = candidates,
+            excludedDestinationNames = excludedDestinationNames,
+        ) ?: throw IllegalStateException("Rute lain yang menghindari jalur ini tidak tersedia")
     }
 
     private suspend fun findNearestNode(location: GeoCoordinate) =

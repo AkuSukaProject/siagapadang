@@ -31,11 +31,13 @@ object PolylineAssembler {
                     )
                 } else {
                     val parsed = WktLineStringParser.parse(edge.geometry)
-                    when {
-                        edge.u == fromNodeId && edge.v == toNodeId -> parsed
-                        edge.v == fromNodeId && edge.u == toNodeId -> parsed.reversed()
-                        else -> throw IllegalStateException("Arah ruas tidak sesuai pasangan node")
-                    }
+                    orderGeometry(
+                        parsed = parsed,
+                        edge = edge,
+                        fromNodeId = fromNodeId,
+                        toNodeId = toNodeId,
+                        nodeCoordinates = nodeCoordinates,
+                    )
                 }
 
                 if (isNotEmpty() && sameCoordinate(last(), ordered.first())) {
@@ -49,6 +51,32 @@ object PolylineAssembler {
 
     private fun unorderedPair(first: Long, second: Long): Pair<Long, Long> =
         if (first <= second) first to second else second to first
+
+    private fun orderGeometry(
+        parsed: List<GeoCoordinate>,
+        edge: EdgeRow,
+        fromNodeId: Long,
+        toNodeId: Long,
+        nodeCoordinates: Map<Long, GeoCoordinate>,
+    ): List<GeoCoordinate> {
+        val fromCoordinate = nodeCoordinates[fromNodeId]
+        val toCoordinate = nodeCoordinates[toNodeId]
+        if (fromCoordinate != null && toCoordinate != null) {
+            val forwardEndpointDistance =
+                NearestNodeFinder.distanceMeters(fromCoordinate, parsed.first()) +
+                    NearestNodeFinder.distanceMeters(toCoordinate, parsed.last())
+            val reverseEndpointDistance =
+                NearestNodeFinder.distanceMeters(fromCoordinate, parsed.last()) +
+                    NearestNodeFinder.distanceMeters(toCoordinate, parsed.first())
+            return if (forwardEndpointDistance <= reverseEndpointDistance) parsed else parsed.reversed()
+        }
+
+        return when {
+            edge.u == fromNodeId && edge.v == toNodeId -> parsed
+            edge.v == fromNodeId && edge.u == toNodeId -> parsed.reversed()
+            else -> throw IllegalStateException("Arah ruas tidak sesuai pasangan node")
+        }
+    }
 
     private fun sameCoordinate(first: GeoCoordinate, second: GeoCoordinate): Boolean =
         abs(first.latitude - second.latitude) < COORDINATE_EPSILON &&

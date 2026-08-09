@@ -2,13 +2,22 @@ package com.akusukaproject.siagapadang.ui.evacuation
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
+import com.akusukaproject.siagapadang.domain.ManeuverGuidance
+import com.akusukaproject.siagapadang.domain.ManeuverType
+import com.akusukaproject.siagapadang.domain.NearestNodeFinder
 import com.akusukaproject.siagapadang.domain.RouteGuidanceCalculator
+import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +27,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class EvacuationViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SiagaPadangApplication
@@ -30,6 +40,8 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private var routeJob: Job? = null
     private var countdownJob: Job? = null
     private var initialRouteRequested = false
+    private val rejectedDestinationNames = mutableSetOf<String>()
+    private val arrivalTracker = ArrivalConfirmationTracker()
 
     fun onLocationPermissionChanged(granted: Boolean) {
         mutableUiState.update { state ->
@@ -54,17 +66,38 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun selectAlternativeDestination() {
-        val currentRoute = mutableUiState.value.route ?: return
-        val nextRank = currentRoute.rank + 1
-        if (nextRank > 3 || routeJob?.isActive == true) return
+        val currentState = mutableUiState.value
+        val currentRoute = currentState.route ?: return
+        val currentLocation = currentState.currentLocation ?: return
+        if (!currentState.canSelectAlternative || routeJob?.isActive == true) return
 
         routeJob = viewModelScope.launch {
             mutableUiState.update { it.copy(isLoadingRoute = true, errorMessage = null) }
             runCatching {
-                repository.loadRoute(currentRoute.originNodeId, nextRank)
+                repository.findAlternativeRoute(
+                    location = currentLocation,
+                    currentRoute = currentRoute,
+                    excludedDestinationNames = rejectedDestinationNames,
+                )
             }.onSuccess { route ->
+                rejectedDestinationNames += currentRoute.destinationName
+                arrivalTracker.reset()
                 mutableUiState.update { state ->
-                    withGuidance(state.copy(route = route, isLoadingRoute = false))
+                    withGuidance(
+                        state.copy(
+                            route = route,
+                            previousRoutes =
+                                (state.previousRoutes + currentRoute)
+                                    .distinctBy { previousRoute -> previousRoute.destinationName },
+                            isLoadingRoute = false,
+                            remainingAlternativeCount =
+                                (state.remainingAlternativeCount - 1).coerceAtLeast(0),
+                            alternativeRouteVersion = state.alternativeRouteVersion + 1,
+                            alternativeRouteMessage = "Rute dialihkan ke ${route.destinationName}",
+                            hasArrived = false,
+                            arrivalDistanceMeters = null,
+                        ),
+                    )
                 }
             }.onFailure { error ->
                 mutableUiState.update {
@@ -87,14 +120,18 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
                     .collect { deviceLocation ->
+                        var arrivalConfirmedNow = false
                         mutableUiState.update { state ->
-                            withGuidance(
+                            val updatedState = withArrivalEvaluation(
                                 state.copy(
                                     currentLocation = deviceLocation.coordinate,
                                     locationAccuracyMeters = deviceLocation.accuracyMeters,
                                 ),
                             )
+                            arrivalConfirmedNow = !state.hasArrived && updatedState.hasArrived
+                            updatedState
                         }
+                        if (arrivalConfirmedNow) onArrivalConfirmed()
                         requestInitialRoute(deviceLocation.coordinate)
                     }
             }
@@ -131,11 +168,18 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             }.onSuccess { route ->
                 val elapsedMillis = System.currentTimeMillis() - startedAt
                 logRouteTiming(elapsedMillis)
+                rejectedDestinationNames.clear()
+                arrivalTracker.reset()
                 mutableUiState.update { state ->
                     withGuidance(
                         state.copy(
                             route = route,
+                            previousRoutes = emptyList(),
                             isLoadingRoute = false,
+                            remainingAlternativeCount = EvacuationUiState.MAX_ALTERNATIVE_COUNT,
+                            alternativeRouteMessage = null,
+                            hasArrived = false,
+                            arrivalDistanceMeters = null,
                             errorMessage = null,
                         ),
                     )
@@ -155,7 +199,11 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private fun startCountdown() {
         if (countdownJob != null) return
         countdownJob = viewModelScope.launch {
-            while (isActive && mutableUiState.value.remainingEvacuationSeconds > 0) {
+            while (
+                isActive &&
+                !mutableUiState.value.hasArrived &&
+                mutableUiState.value.remainingEvacuationSeconds > 0
+            ) {
                 delay(1_000)
                 mutableUiState.update { state ->
                     state.copy(
@@ -172,6 +220,66 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         val routeCoordinates = state.route?.coordinates ?: return state
         return state.copy(
             guidance = RouteGuidanceCalculator.calculate(location, routeCoordinates),
+        )
+    }
+
+    private fun withArrivalEvaluation(state: EvacuationUiState): EvacuationUiState {
+        val guidedState = withGuidance(state)
+        val location = guidedState.currentLocation ?: return guidedState
+        val route = guidedState.route ?: return guidedState
+        val targets = buildList {
+            route.destinationCoordinate?.let(::add)
+            route.coordinates.lastOrNull()?.let(::add)
+        }
+        if (targets.isEmpty()) return guidedState
+        val distanceMeters = targets.minOf { target ->
+            NearestNodeFinder.distanceMeters(location, target)
+        }.roundToInt().coerceAtLeast(0)
+
+        val hasArrived = guidedState.hasArrived || arrivalTracker.update(
+            distanceMeters = distanceMeters.toDouble(),
+            accuracyMeters = guidedState.locationAccuracyMeters,
+        )
+        return if (hasArrived) {
+            guidedState.copy(
+                hasArrived = true,
+                arrivalDistanceMeters = distanceMeters,
+                guidance = arrivalGuidance(distanceMeters),
+            )
+        } else {
+            guidedState.copy(arrivalDistanceMeters = distanceMeters)
+        }
+    }
+
+    private fun arrivalGuidance(distanceMeters: Int) = RouteGuidanceSnapshot(
+        instructions = listOf(
+            ManeuverGuidance(
+                type = ManeuverType.ARRIVE,
+                distanceMeters = distanceMeters,
+            ),
+        ),
+        remainingDistanceMeters = distanceMeters,
+    )
+
+    private fun onArrivalConfirmed() {
+        countdownJob?.cancel()
+        countdownJob = null
+        vibrateArrivalPattern()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibrateArrivalPattern() {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            app.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            app.getSystemService(Vibrator::class.java)
+        } ?: return
+        if (!vibrator.hasVibrator()) return
+        vibrator.vibrate(
+            VibrationEffect.createWaveform(
+                longArrayOf(0L, 180L, 100L, 260L),
+                -1,
+            ),
         )
     }
 

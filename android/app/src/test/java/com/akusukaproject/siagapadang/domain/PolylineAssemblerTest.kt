@@ -74,4 +74,27 @@ class PolylineAssemblerTest {
         assertEquals(100.1, coordinates.first().longitude, 0.0)
         assertEquals(100.2, coordinates.last().longitude, 0.0)
     }
+
+    @Test
+    fun `assembler mengikuti endpoint node saat arah WKT berlawanan dengan kolom edge`() {
+        val edge = EdgeRow(
+            edgeId = 4,
+            u = 1,
+            v = 2,
+            length = 100.0,
+            geometry = "LINESTRING (100.2 -0.2, 100.15 -0.15, 100.1 -0.1)",
+        )
+
+        val coordinates = PolylineAssembler.assemble(
+            pathNodeIds = listOf(1, 2),
+            edges = listOf(edge),
+            nodeCoordinates = mapOf(
+                1L to GeoCoordinate(latitude = -0.1, longitude = 100.1),
+                2L to GeoCoordinate(latitude = -0.2, longitude = 100.2),
+            ),
+        )
+
+        assertEquals(100.1, coordinates.first().longitude, 0.0)
+        assertEquals(100.2, coordinates.last().longitude, 0.0)
+    }
 }
