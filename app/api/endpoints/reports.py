@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast
 from sqlalchemy.exc import IntegrityError
+from geoalchemy2 import Geography
 from datetime import datetime, timedelta
 import pytz
 from app.database import get_db
@@ -28,8 +29,7 @@ def report_obstruction(
             detail="Tidak ada kejadian darurat (Emergency Event) yang aktif. Laporan tidak dapat diterima."
         )
         
-    # 2. Validasi Jarak dengan Ruas Jalan (Opsional, jika data RouteEdge ada)
-    # PostGIS: ST_DWithin casting ke geography untuk kalkulasi dalam meter.
+    # 2. Validasi Jarak dengan Ruas Jalan (jika data RouteEdge ada di database)
     point_wkt = f"SRID=4326;POINT({report.longitude} {report.latitude})"
     
     edge = db.query(RouteEdge).filter(
@@ -40,8 +40,8 @@ def report_obstruction(
     if edge:
         is_within_distance = db.scalar(
             func.ST_DWithin(
-                func.ST_GeogFromText(point_wkt),
-                func.cast(edge.geometry, func.Geometry).cast(func.Geography),
+                func.ST_GeographyFromText(point_wkt),
+                cast(edge.geometry, Geography),
                 50  # 50 meter radius
             )
         )
@@ -72,15 +72,14 @@ def report_obstruction(
             db.refresh(obstruction)
         except IntegrityError:
             db.rollback()
-            # Ada race condition, obstruction sudah dibuat user lain
+            # Race condition handling: obstruction sudah dibuat oleh request lain
             obstruction = db.query(Obstruction).filter(
                 Obstruction.event_id == active_event.id,
                 Obstruction.dataset_version_id == report.dataset_version_id,
                 Obstruction.edge_external_id == report.edge_external_id
             ).first()
             
-    # Jika obstruction sudah EXPIRED, kita tidak terima lagi (atau buat siklus baru? Mikail bilang expired = ignore)
-    if obstruction.status == ObstructionStatus.EXPIRED:
+    if obstruction and obstruction.status == ObstructionStatus.EXPIRED:
          raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hambatan ini sudah ditandai kadaluarsa/selesai."
@@ -115,7 +114,7 @@ def report_obstruction(
     if recent_reports_count >= 3 and obstruction.status == ObstructionStatus.PENDING:
         obstruction.status = ObstructionStatus.CONFIRMED
         obstruction.confirmed_at = datetime.now(pytz.utc)
-        obstruction.expires_at = datetime.now(pytz.utc) + timedelta(hours=6) # Reset expiry
+        obstruction.expires_at = datetime.now(pytz.utc) + timedelta(hours=6)
         db.commit()
         is_confirmed_blocked = True
     elif obstruction.status == ObstructionStatus.CONFIRMED:

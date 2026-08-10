@@ -11,3 +11,8 @@ networkx
 matplotlib
 alembic>=1.12.1
 pytest>=7.4.3
+httpx
+pytz
+rapidfuzz
+openpyxl
+requests

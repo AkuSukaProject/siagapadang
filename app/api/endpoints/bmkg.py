@@ -1,7 +1,6 @@
 import urllib.request
 import json
 import time
-# pyrefly: ignore [missing-import]
 from fastapi import APIRouter
 from app.schemas.bmkg import BMKGStatusResponse
 
@@ -19,7 +18,7 @@ BMKG_URL = "https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json"
 def get_bmkg_status():
     current_time = time.time()
     
-    # Return cache if valid
+    # Return cache if valid (300 detik / 5 menit)
     if bmkg_cache["data"] and (current_time - bmkg_cache["last_fetched"] < 300):
         return bmkg_cache["data"]
         
@@ -31,27 +30,27 @@ def get_bmkg_status():
                 'Accept': 'application/json'
             }
         )
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode('utf-8'))
-            gempa = data["Infogempa"]["gempa"]
+            gempa = data.get("Infogempa", {}).get("gempa", {})
             
             # Deteksi manual potensi tsunami dari teks BMKG
-            potensi_text = gempa.get("Potensi", "").lower()
+            potensi_text = str(gempa.get("Potensi") or "").lower()
             is_tsunami = "tsunami" in potensi_text and "tidak berpotensi" not in potensi_text
             
             result = BMKGStatusResponse(
-                tanggal=gempa.get("Tanggal", ""),
-                jam=gempa.get("Jam", ""),
-                datetime=gempa.get("DateTime", ""),
-                coordinates=gempa.get("Coordinates", ""),
-                lintang=gempa.get("Lintang", ""),
-                bujur=gempa.get("Bujur", ""),
-                magnitude=gempa.get("Magnitude", ""),
-                kedalaman=gempa.get("Kedalaman", ""),
-                wilayah=gempa.get("Wilayah", ""),
-                potensi=gempa.get("Potensi", ""),
-                dirasakan=gempa.get("Dirasakan", ""),
-                shakemap=gempa.get("Shakemap", ""),
+                tanggal=str(gempa.get("Tanggal") or ""),
+                jam=str(gempa.get("Jam") or ""),
+                datetime=str(gempa.get("DateTime") or ""),
+                coordinates=str(gempa.get("Coordinates") or ""),
+                lintang=str(gempa.get("Lintang") or ""),
+                bujur=str(gempa.get("Bujur") or ""),
+                magnitude=str(gempa.get("Magnitude") or ""),
+                kedalaman=str(gempa.get("Kedalaman") or ""),
+                wilayah=str(gempa.get("Wilayah") or ""),
+                potensi=str(gempa.get("Potensi") or ""),
+                dirasakan=str(gempa.get("Dirasakan") or ""),
+                shakemap=str(gempa.get("Shakemap") or ""),
                 is_tsunami_potential=is_tsunami
             )
             

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast
+from geoalchemy2 import Geography
 from datetime import datetime
 import pytz
 from app.database import get_db
@@ -39,19 +40,20 @@ def shelter_checkin(
     point_wkt = f"SRID=4326;POINT({request.longitude} {request.latitude})"
     radius = request.accuracy_m + 50
     
-    is_within_distance = db.scalar(
-        func.ST_DWithin(
-            func.cast(point.location, func.Geometry).cast(func.Geography),
-            func.ST_GeogFromText(point_wkt),
-            radius
+    if point.location is not None:
+        is_within_distance = db.scalar(
+            func.ST_DWithin(
+                cast(point.location, Geography),
+                func.ST_GeographyFromText(point_wkt),
+                radius
+            )
         )
-    )
-    
-    if not is_within_distance:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Lokasi Anda terlalu jauh dari Tempat Evakuasi yang dipilih. Pastikan Anda berada di area evakuasi."
-        )
+        
+        if not is_within_distance:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lokasi Anda terlalu jauh dari Tempat Evakuasi yang dipilih. Pastikan Anda berada di area evakuasi."
+            )
     
     # 4. Cek apakah sudah pernah checkin untuk event ini (upsert logic)
     checkin = db.query(Checkin).filter(

@@ -26,7 +26,6 @@ def check_updates(db: Session = Depends(get_db)):
         (DataVersion.dataset_name == subquery.c.dataset_name) & (DataVersion.id == subquery.c.max_id)
     ).all()
     
-    # Gunakan pydantic model_validate untuk konversi langsung jika DataVersionBase dikonfigurasi from_attributes
     return SyncCheckResponse(
         has_update=len(latest_versions) > 0,
         latest_versions=[DataVersionBase.model_validate(v) for v in latest_versions],
@@ -46,13 +45,17 @@ def get_sync_shelters(db: Session = Depends(get_db)):
     
     features = []
     for s in shelters:
-        # Konversi PostGIS ke GeoJSON string, lalu ke Dict
-        geom_json_str = db.scalar(s.location.ST_AsGeoJSON())
-        geom = json.loads(geom_json_str) if geom_json_str else None
-        
-        entrance_json_str = db.scalar(s.entrance_coord.ST_AsGeoJSON()) if s.entrance_coord is not None else None
-        entrance_geom = json.loads(entrance_json_str) if entrance_json_str else None
-        
+        # Konversi PostGIS ke GeoJSON string secara aman jika koordinat ada
+        geom = None
+        if s.location is not None:
+            geom_json_str = db.scalar(func.ST_AsGeoJSON(s.location))
+            geom = json.loads(geom_json_str) if geom_json_str else None
+            
+        entrance_geom = None
+        if s.entrance_coord is not None:
+            entrance_json_str = db.scalar(func.ST_AsGeoJSON(s.entrance_coord))
+            entrance_geom = json.loads(entrance_json_str) if entrance_json_str else None
+            
         features.append({
             "type": "Feature",
             "geometry": geom,
@@ -63,8 +66,9 @@ def get_sync_shelters(db: Session = Depends(get_db)):
                 "capacity": s.capacity,
                 "floors": s.floors,
                 "elevation_m": s.elevation_m,
-                "type": s.type.value if hasattr(s.type, 'value') else str(s.type),
-                "operational_status": s.operational_status.value if hasattr(s.operational_status, 'value') else str(s.operational_status),
+                "type": s.type.value if hasattr(s.type, 'value') else str(s.type or ""),
+                "structural_condition": s.structural_condition.value if hasattr(s.structural_condition, 'value') else str(s.structural_condition or ""),
+                "operational_status": s.operational_status.value if hasattr(s.operational_status, 'value') else str(s.operational_status or ""),
                 "address": s.address,
                 "source": s.source,
                 "entrance_geometry": entrance_geom
