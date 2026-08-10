@@ -6,7 +6,7 @@ from app.schemas.bmkg import BMKGStatusResponse
 
 router = APIRouter()
 
-# Simple In-Memory Cache (30 detik TTL)
+# Simple In-Memory Cache (300 detik TTL)
 bmkg_cache = {
     "data": None,
     "last_fetched": 0
@@ -61,7 +61,7 @@ def get_bmkg_status():
             return result
             
     except Exception:
-        # Fallback ke cache usang jika BMKG down
+        # Fallback ke cache usang jika BMKG down / mock fixture
         if bmkg_cache["data"]:
             return bmkg_cache["data"]
             
@@ -74,8 +74,8 @@ def get_bmkg_status():
             bujur="",
             magnitude="",
             kedalaman="",
-            wilayah="",
-            potensi="Status BMKG belum tersedia",
+            wilayah="TEST FIXTURE — BUKAN INFORMASI GEMPA AKTUAL",
+            potensi="TEST FIXTURE — BUKAN INFORMASI GEMPA AKTUAL",
             dirasakan="",
             shakemap="",
             is_tsunami_potential=False

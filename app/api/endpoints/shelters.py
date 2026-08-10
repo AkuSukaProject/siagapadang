@@ -17,52 +17,63 @@ def shelter_checkin(
     db: Session = Depends(get_db),
     device_hash: str = Depends(get_device_id)
 ):
-    # 1. Pastikan ada EmergencyEvent Aktif
+    # 1. Validasi Akurasi GPS (Maksimal 35 meter)
+    if request.accuracy_m > 35:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Akurasi GPS Anda terlalu buruk ({request.accuracy_m}m). Akurasi maksimal yang diperbolehkan adalah 35m."
+        )
+
+    # 2. Cari EmergencyEvent Aktif berdasarkan event_external_id
     active_event = db.query(EmergencyEvent).filter(
+        EmergencyEvent.external_event_id == request.event_external_id,
         EmergencyEvent.status == EventStatus.ACTIVE
-    ).order_by(EmergencyEvent.started_at.desc()).first()
+    ).first()
     
     if not active_event:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tidak ada kejadian darurat (Emergency Event) yang aktif. Laporan check-in tidak dapat diterima."
+            detail=f"Kejadian darurat dengan ID '{request.event_external_id}' tidak ditemukan atau tidak dalam status ACTIVE."
         )
         
-    # 2. Cari TES/TEA berdasarkan external_id
-    point = db.query(EvacuationPoint).filter(EvacuationPoint.external_id == request.external_id).first()
+    # 3. Cari TES/TEA berdasarkan evacuation_point_external_id
+    point = db.query(EvacuationPoint).filter(
+        EvacuationPoint.external_id == request.evacuation_point_external_id
+    ).first()
+    
     if not point:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tempat Evakuasi tidak ditemukan di database backend."
+            detail=f"Tempat Evakuasi dengan ID '{request.evacuation_point_external_id}' tidak ditemukan."
         )
         
-    # 3. Validasi jarak (ST_DWithin) dengan memperhitungkan akurasi GPS pengguna + radius fleksibilitas 50 meter
+    # 4. Validasi Jarak Presisi: Jarak maksimal = min(20 + accuracy_m, 55) meter
+    max_allowed_distance = min(20.0 + request.accuracy_m, 55.0)
     point_wkt = f"SRID=4326;POINT({request.longitude} {request.latitude})"
-    radius = request.accuracy_m + 50
     
     if point.location is not None:
-        is_within_distance = db.scalar(
+        is_within_distance = db.query(
             func.ST_DWithin(
-                cast(point.location, Geography),
+                cast(EvacuationPoint.location, Geography),
                 func.ST_GeographyFromText(point_wkt),
-                radius
+                max_allowed_distance
             )
-        )
+        ).filter(EvacuationPoint.id == point.id).scalar()
         
         if not is_within_distance:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Lokasi Anda terlalu jauh dari Tempat Evakuasi yang dipilih. Pastikan Anda berada di area evakuasi."
+                detail=f"Lokasi Anda terlalu jauh dari Tempat Evakuasi ({request.evacuation_point_external_id}). Jarak maksimal toleransi adalah {max_allowed_distance}m."
             )
     
-    # 4. Cek apakah sudah pernah checkin untuk event ini (upsert logic)
+    # 5. Upsert Checkin Logic (Terikat pada event_id dan device_hash)
     checkin = db.query(Checkin).filter(
         Checkin.event_id == active_event.id,
         Checkin.device_hash == device_hash
     ).first()
     
     if checkin:
-        # Update lokasi checkin terakhir
+        # Perpindahan TES atau update status
         checkin.evacuation_point_id = point.id
         checkin.status = request.status
         checkin.checked_in_at = datetime.now(pytz.utc)
