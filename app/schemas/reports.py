@@ -4,8 +4,8 @@ from typing import Optional
 class ObstructionReportCreate(BaseModel):
     latitude: float = Field(..., description="Garis lintang halangan (Y)")
     longitude: float = Field(..., description="Garis bujur halangan (X)")
-    dataset_version: str = Field(..., description="Versi dataset graf rute yang digunakan Android saat ini")
-    edge_id: Optional[int] = Field(None, description="Opsional ID ruas jalan (BigInteger)")
+    dataset_version_id: int = Field(..., description="ID versi dataset graf rute yang digunakan Android saat ini")
+    edge_external_id: str = Field(..., description="External ID ruas jalan")
     description: Optional[str] = Field(None, description="Opsional deskripsi halangan")
 
 class ObstructionReportResponse(BaseModel):
