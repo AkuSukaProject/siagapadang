@@ -1,52 +1,56 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.database import get_db
-from app.models.domain import DataVersion, EvacuationPoint, InundationZone
-from app.schemas.sync import SyncCheckResponse, SyncDataResponse
+from app.models.domain import DataVersion, EvacuationPoint, InundationZone, SafeZone
+from app.schemas.sync import SyncCheckResponse, SyncDataResponse, DataVersionBase
 import json
+from typing import List
 
 router = APIRouter()
 
 @router.get("/check", response_model=SyncCheckResponse)
-def check_updates(client_shelter_version: str = "v0.0.0", client_inundation_version: str = "v0.0.0", db: Session = Depends(get_db)):
+def check_updates(db: Session = Depends(get_db)):
     """
-    Endpoint untuk mengecek apakah ada versi data terbaru di server (dibandingkan dengan versi SQLite di HP).
-    Sangat ringan, dieksekusi di Background Worker Android.
+    Endpoint untuk mendapatkan metadata versi terbaru dari semua dataset yang aktif.
+    Android akan membandingkan daftar ini dengan versi lokal SQLite-nya.
     """
-    latest_shelter = db.query(DataVersion).filter_by(dataset_name="shelters").order_by(DataVersion.id.desc()).first()
-    latest_inund = db.query(DataVersion).filter_by(dataset_name="inundation_zones").order_by(DataVersion.id.desc()).first()
+    # Ambil versi terbaru per dataset_name
+    subquery = db.query(
+        DataVersion.dataset_name, 
+        func.max(DataVersion.id).label('max_id')
+    ).filter(DataVersion.is_active == True).group_by(DataVersion.dataset_name).subquery()
     
-    if not latest_shelter or not latest_inund:
-        raise HTTPException(status_code=404, detail="Data versioning belum disetel di server.")
-        
-    has_update = (latest_shelter.version != client_shelter_version) or (latest_inund.version != client_inundation_version)
+    latest_versions = db.query(DataVersion).join(
+        subquery, 
+        (DataVersion.dataset_name == subquery.c.dataset_name) & (DataVersion.id == subquery.c.max_id)
+    ).all()
     
+    # Gunakan pydantic model_validate untuk konversi langsung jika DataVersionBase dikonfigurasi from_attributes
     return SyncCheckResponse(
-        has_update=has_update,
-        latest_shelter_version=latest_shelter.version,
-        latest_inundation_version=latest_inund.version,
-        message="Update available, silakan panggil /shelters" if has_update else "Peta di perangkat sudah yang paling baru."
+        has_update=len(latest_versions) > 0,
+        latest_versions=[DataVersionBase.model_validate(v) for v in latest_versions],
+        message="Daftar versi dataset terbaru berhasil diambil."
     )
 
 @router.get("/shelters", response_model=SyncDataResponse)
 def get_sync_shelters(db: Session = Depends(get_db)):
     """
     Mengunduh seluruh data shelter beserta metadata (elevasi, kapasitas, akses masuk) dalam format GeoJSON standar.
-    Hanya dipanggil Android jika /check mengembalikan has_update=True.
     """
-    latest_shelter = db.query(DataVersion).filter_by(dataset_name="shelters").order_by(DataVersion.id.desc()).first()
+    latest_shelter = db.query(DataVersion).filter_by(dataset_name="shelters", is_active=True).order_by(DataVersion.id.desc()).first()
     if not latest_shelter:
-        raise HTTPException(status_code=404, detail="No shelter data available.")
+        raise HTTPException(status_code=404, detail="No shelter data version available.")
         
     shelters = db.query(EvacuationPoint).all()
     
     features = []
     for s in shelters:
-        # Menggunakan ST_AsGeoJSON dari GeoAlchemy2 untuk konversi aman dari PostGIS (WKB) ke JSON
+        # Konversi PostGIS ke GeoJSON string, lalu ke Dict
         geom_json_str = db.scalar(s.location.ST_AsGeoJSON())
         geom = json.loads(geom_json_str) if geom_json_str else None
         
-        entrance_json_str = db.scalar(s.entrance_coord.ST_AsGeoJSON())
+        entrance_json_str = db.scalar(s.entrance_coord.ST_AsGeoJSON()) if s.entrance_coord is not None else None
         entrance_geom = json.loads(entrance_json_str) if entrance_json_str else None
         
         features.append({
@@ -54,10 +58,15 @@ def get_sync_shelters(db: Session = Depends(get_db)):
             "geometry": geom,
             "properties": {
                 "id": s.id,
+                "external_id": s.external_id,
                 "name": s.name,
                 "capacity": s.capacity,
+                "floors": s.floors,
                 "elevation_m": s.elevation_m,
-                "status": "active" if s.is_operational else "inactive",
+                "type": s.type.value if hasattr(s.type, 'value') else str(s.type),
+                "operational_status": s.operational_status.value if hasattr(s.operational_status, 'value') else str(s.operational_status),
+                "address": s.address,
+                "source": s.source,
                 "entrance_geometry": entrance_geom
             }
         })
@@ -78,6 +87,5 @@ def get_sync_shelters(db: Session = Depends(get_db)):
 def get_sync_network():
     """
     Endpoint placeholder untuk mengunduh patch/update graf (node/edge OSM) terbaru.
-    Ini dipisahkan dari shelters karena ukuran graf jauh lebih besar.
     """
     return {"message": "Network graph patch endpoint (Not implemented yet)"}

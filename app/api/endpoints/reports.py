@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.models.domain import ObstructionReport
+from app.models.domain import EmergencyEvent, Obstruction, ObstructionReport, EventStatus, ObstructionStatus
 from app.schemas.reports import ObstructionReportCreate, ObstructionReportResponse
 from app.middleware.security import get_device_id
 
@@ -13,46 +13,69 @@ router = APIRouter()
 def report_obstruction(
     report: ObstructionReportCreate,
     db: Session = Depends(get_db),
-    device_id: str = Depends(get_device_id)
+    device_hash: str = Depends(get_device_id)
 ):
-    # 1. Simpan laporan baru
+    if not report.edge_id:
+        raise HTTPException(status_code=400, detail="Pembaruan saat ini mewajibkan edge_id untuk sinkronisasi graf.")
+
+    # 1. Cari atau Buat EmergencyEvent Aktif
+    active_event = db.query(EmergencyEvent).filter(EmergencyEvent.status == EventStatus.ACTIVE).order_by(EmergencyEvent.started_at.desc()).first()
+    if not active_event:
+        active_event = EmergencyEvent(
+            source="USER_REPORT",
+            status=EventStatus.ACTIVE
+        )
+        db.add(active_event)
+        db.commit()
+        db.refresh(active_event)
+        
+    # 2. Cari atau Buat Obstruction (Induk hambatan)
+    obstruction = db.query(Obstruction).filter(
+        Obstruction.event_id == active_event.id,
+        Obstruction.edge_id == report.edge_id,
+        Obstruction.dataset_version == report.dataset_version
+    ).first()
+    
+    if not obstruction:
+        obstruction = Obstruction(
+            event_id=active_event.id,
+            edge_id=report.edge_id,
+            dataset_version=report.dataset_version,
+            status=ObstructionStatus.PENDING,
+            expires_at=datetime.utcnow() + timedelta(hours=6)
+        )
+        db.add(obstruction)
+        db.commit()
+        db.refresh(obstruction)
+        
+    # 3. Simpan Laporan Warga
     point = f"SRID=4326;POINT({report.longitude} {report.latitude})"
     new_report = ObstructionReport(
-        device_id=device_id,
+        obstruction_id=obstruction.id,
+        device_hash=device_hash,
         location=point,
-        edge_id=report.edge_id,
-        description=report.description,
-        expires_at=datetime.utcnow() + timedelta(hours=6)
+        description=report.description
     )
     db.add(new_report)
     db.commit()
-    db.refresh(new_report)
     
-    # 2. Algoritma Cerdas: Cek radius 50 meter
-    # Pastikan kita menghitung user yang unik (berdasarkan device_id)
-    # ST_DWithin membandingkan 2 geometri. Parameter ke-3 adalah jarak (dalam derajat jika SRID 4326, 
-    # tapi kita cast ke geography agar jaraknya dalam meter)
-    nearby_reports = db.query(ObstructionReport.device_id).filter(
-        func.ST_DWithin(
-            func.Geography(ObstructionReport.location),
-            func.Geography(func.ST_GeomFromText(f"POINT({report.longitude} {report.latitude})", 4326)),
-            50.0  # 50 meter
-        ),
-        ObstructionReport.expires_at > func.now()
+    # 4. Evaluasi Threshold Laporan (Crowd-Sourced Validation)
+    unique_reports_count = db.query(ObstructionReport.device_hash).filter(
+        ObstructionReport.obstruction_id == obstruction.id
     ).distinct().count()
     
-    # 3. Threshold 3 laporan unik
-    is_blocked = nearby_reports >= 3
-    
-    # Jika is_blocked = True, di sistem nyata kita akan memasukkan data ini 
-    # ke antrean Graph Update (RabbitMQ / Kafka) untuk disinkronkan ke HP warga.
-    if is_blocked:
-        new_report.is_verified = True
+    is_confirmed_blocked = False
+    if unique_reports_count >= 3 and obstruction.status == ObstructionStatus.PENDING:
+        obstruction.status = ObstructionStatus.CROWD_CONFIRMED
+        obstruction.confirmed_at = datetime.utcnow()
         db.commit()
-    
+        is_confirmed_blocked = True
+    elif obstruction.status in [ObstructionStatus.CROWD_CONFIRMED, ObstructionStatus.OFFICIAL_CONFIRMED]:
+        is_confirmed_blocked = True
+        
     return ObstructionReportResponse(
         status="success",
-        message="Laporan diterima" if not is_blocked else "Jalan ini kini ditandai PUTUS untuk pengguna lain.",
-        is_blocked=is_blocked,
-        report_count=nearby_reports
+        message="Laporan diterima" if not is_confirmed_blocked else "Jalan ini kini ditandai PUTUS untuk pengguna lain.",
+        obstruction_id=obstruction.id,
+        is_confirmed_blocked=is_confirmed_blocked
     )
