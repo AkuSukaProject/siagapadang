@@ -3,17 +3,70 @@ package com.akusukaproject.siagapadang.data.repository
 import com.akusukaproject.siagapadang.data.local.EvacuationDao
 import com.akusukaproject.siagapadang.data.local.RouteRow
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
+import com.akusukaproject.siagapadang.data.model.EvacuationSummary
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
 import com.akusukaproject.siagapadang.domain.AlternativeRouteSelector
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
 import com.akusukaproject.siagapadang.domain.PolylineAssembler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.MultiLineString
+import org.maplibre.geojson.Point
 import kotlin.math.roundToInt
 
 class EvacuationRepository(
     private val dao: EvacuationDao,
 ) {
+    @Volatile
+    private var cachedOfflineRoadOverlay: OfflineRoadOverlay? = null
+
+    suspend fun loadOfflineRoadOverlay(center: GeoCoordinate): OfflineRoadOverlay {
+        val latitudeCell = (center.latitude / ROAD_VIEWPORT_GRID_DEGREES).roundToInt()
+        val longitudeCell = (center.longitude / ROAD_VIEWPORT_GRID_DEGREES).roundToInt()
+        val viewportId = "$latitudeCell:$longitudeCell"
+        cachedOfflineRoadOverlay?.takeIf { overlay -> overlay.viewportId == viewportId }?.let {
+            return it
+        }
+        val queryLatitude = latitudeCell * ROAD_VIEWPORT_GRID_DEGREES
+        val queryLongitude = longitudeCell * ROAD_VIEWPORT_GRID_DEGREES
+        val segments = dao.findRoadSegmentsInBounds(
+            minLat = queryLatitude - ROAD_VIEWPORT_HALF_SPAN_DEGREES,
+            maxLat = queryLatitude + ROAD_VIEWPORT_HALF_SPAN_DEGREES,
+            minLon = queryLongitude - ROAD_VIEWPORT_HALF_SPAN_DEGREES,
+            maxLon = queryLongitude + ROAD_VIEWPORT_HALF_SPAN_DEGREES,
+        )
+        return withContext(Dispatchers.Default) {
+            val lineCoordinates = segments.map { segment ->
+                listOf(
+                    Point.fromLngLat(segment.fromLongitude, segment.fromLatitude),
+                    Point.fromLngLat(segment.toLongitude, segment.toLatitude),
+                )
+            }
+            val feature = Feature.fromGeometry(MultiLineString.fromLngLats(lineCoordinates))
+            OfflineRoadOverlay(
+                viewportId = viewportId,
+                geoJson = FeatureCollection.fromFeature(feature).toJson(),
+                segmentCount = lineCoordinates.size,
+            )
+        }.also { overlay -> cachedOfflineRoadOverlay = overlay }
+    }
+
+    suspend fun findSummaryFromLocation(location: GeoCoordinate): EvacuationSummary {
+        val nearestNode = findNearestNode(location)
+        val routeRow = dao.findRoute(nearestNode.nodeId)
+            ?: throw IllegalStateException("Rute evakuasi tidak tersedia untuk lokasi ini")
+        val selection = routeRow.select(rank = 1)
+        return EvacuationSummary(
+            destinationName = selection.destinationName,
+            estimatedSeconds = (selection.etaMinutes * 60.0).roundToInt(),
+            estimatedDistanceMeters = (selection.etaMinutes * 60.0 * WALKING_SPEED_METERS_PER_SECOND)
+                .roundToInt(),
+        )
+    }
+
     suspend fun findRouteFromLocation(
         location: GeoCoordinate,
         rank: Int = 1,
@@ -54,6 +107,8 @@ class EvacuationRepository(
             destinationCoordinate = destination?.let { tes ->
                 GeoCoordinate(latitude = tes.lat, longitude = tes.lon)
             },
+            destinationCapacityPeople = destination?.kapasitas?.roundToInt(),
+            destinationZoneCode = destination?.zona,
         )
     }
 
@@ -100,5 +155,8 @@ class EvacuationRepository(
 
     private companion object {
         val SEARCH_WINDOWS = listOf(0.005, 0.02)
+        const val WALKING_SPEED_METERS_PER_SECOND = 1.2
+        const val ROAD_VIEWPORT_GRID_DEGREES = 0.006
+        const val ROAD_VIEWPORT_HALF_SPAN_DEGREES = 0.016
     }
 }

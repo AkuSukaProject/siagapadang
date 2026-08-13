@@ -12,6 +12,7 @@ import androidx.room.RoomDatabase
 )
 abstract class SiagaPadangDatabase : RoomDatabase() {
     abstract fun evacuationDao(): EvacuationDao
+    abstract fun zoneDao(): ZoneDao
 
     companion object {
         @Volatile
@@ -22,7 +23,7 @@ abstract class SiagaPadangDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     SiagaPadangDatabase::class.java,
-                    "ranah_siaga.db",
+                    "ranah_siaga_hybrid.db",
                 )
                     .createFromAsset("ranah_siaga.db")
                     .setJournalMode(JournalMode.TRUNCATE)

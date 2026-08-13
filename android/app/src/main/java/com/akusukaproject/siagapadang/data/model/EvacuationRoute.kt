@@ -7,5 +7,6 @@ data class EvacuationRoute(
     val estimatedSeconds: Int,
     val coordinates: List<GeoCoordinate>,
     val destinationCoordinate: GeoCoordinate?,
+    val destinationCapacityPeople: Int? = null,
+    val destinationZoneCode: String? = null,
 )
-

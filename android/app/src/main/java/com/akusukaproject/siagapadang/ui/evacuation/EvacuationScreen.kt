@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
@@ -82,6 +83,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.akusukaproject.siagapadang.R
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
+import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
@@ -100,6 +103,9 @@ import kotlin.math.sin
 @Composable
 fun EvacuationScreen(
     viewModel: EvacuationViewModel = viewModel(),
+    showArrivalEvidence: Boolean = false,
+    evidenceDestinationName: String = "TES tujuan",
+    evidenceDestinationCapacity: Int? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -132,27 +138,38 @@ fun EvacuationScreen(
 
     EvacuationContent(
         state = state,
+        showArrivalEvidence = showArrivalEvidence,
+        evidenceDestinationName = evidenceDestinationName,
+        evidenceDestinationCapacity = evidenceDestinationCapacity,
         onRequestLocationPermission = ::requestLocationPermission,
         onRetryRoute = viewModel::retryRoute,
         onSelectAlternative = viewModel::selectAlternativeDestination,
+        onMapViewportChanged = viewModel::onMapViewportChanged,
     )
 }
 
 @Composable
 private fun EvacuationContent(
     state: EvacuationUiState,
+    showArrivalEvidence: Boolean,
+    evidenceDestinationName: String,
+    evidenceDestinationCapacity: Int?,
     onRequestLocationPermission: () -> Unit,
     onRetryRoute: () -> Unit,
     onSelectAlternative: () -> Unit,
+    onMapViewportChanged: (GeoCoordinate) -> Unit,
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
-    var showArrivalDialog by rememberSaveable { mutableStateOf(false) }
+    var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
+        mutableStateOf(showArrivalEvidence)
+    }
+    var selectedStatusDetail by rememberSaveable { mutableStateOf<StatusDetailType?>(null) }
     val mapPanelState = remember { AnchoredDraggableState(MapPanelValue.COLLAPSED) }
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    LaunchedEffect(state.hasArrived) {
-        if (state.hasArrived) showArrivalDialog = true
+    LaunchedEffect(state.hasArrived, showArrivalEvidence) {
+        if (state.hasArrived || showArrivalEvidence) showArrivalDialog = true
     }
 
     BoxWithConstraints(
@@ -198,11 +215,12 @@ private fun EvacuationContent(
             scale = scale,
             expansionProgress = expansionProgress,
             onBlockedRouteClick = { showBlockedRouteDialog = true },
+            onMapViewportChanged = onMapViewportChanged,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
         val handleTop = maxHeight - mapHeight +
-            lerp((7f * scale).dp, (103f * scale).dp, expansionProgress)
+            lerp((-24f * scale).dp, (111f * scale).dp, expansionProgress)
         MapPanelHandle(
             scale = scale,
             expansionProgress = expansionProgress,
@@ -223,13 +241,50 @@ private fun EvacuationContent(
                 .zIndex(20f),
         )
 
-        OfflineStatusBadge(
-            scale = scale,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = scaled(8f))
-                .graphicsLayer(alpha = collapsedContentAlpha),
-        )
+        if (expansionProgress < 0.5f) {
+            StatusIconRow(
+                state = state,
+                selected = selectedStatusDetail,
+                onSelect = { detail ->
+                    selectedStatusDetail = if (selectedStatusDetail == detail) null else detail
+                },
+                scale = scale,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = scaled(8f))
+                    .zIndex(30f),
+            )
+        } else {
+            StatusIconColumn(
+                state = state,
+                selected = selectedStatusDetail,
+                onSelect = { detail ->
+                    selectedStatusDetail = if (selectedStatusDetail == detail) null else detail
+                },
+                scale = scale,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = scaled(111f), top = scaled(17f))
+                    .zIndex(30f),
+            )
+        }
+        selectedStatusDetail?.let { detail ->
+            StatusDetailCard(
+                detail = detail,
+                state = state,
+                onDismiss = { selectedStatusDetail = null },
+                scale = scale,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        end = if (expansionProgress < 0.5f) scaled(12f) else scaled(111f),
+                    )
+                    .offset(
+                        y = if (expansionProgress < 0.5f) scaled(48f) else scaled(105f),
+                    )
+                    .zIndex(31f),
+            )
+        }
 
         val route = state.route
         if (route != null) {
@@ -288,38 +343,298 @@ private fun EvacuationContent(
         )
     }
 
-    if (showArrivalDialog && state.hasArrived) {
+    if (showArrivalDialog && (state.hasArrived || showArrivalEvidence)) {
         ArrivalDialog(
-            destinationName = state.route?.destinationName ?: "TES",
+            destinationName = if (showArrivalEvidence) {
+                evidenceDestinationName
+            } else {
+                state.route?.destinationName ?: "TES"
+            },
+            destinationCapacityPeople = if (showArrivalEvidence) {
+                evidenceDestinationCapacity
+            } else {
+                state.route?.destinationCapacityPeople
+            },
             onAcknowledge = { showArrivalDialog = false },
         )
     }
 }
 
 @Composable
-private fun OfflineStatusBadge(scale: Float, modifier: Modifier = Modifier) {
-    Surface(
-        color = Color.Transparent,
-        contentColor = SiagaCream,
-        shape = CircleShape,
-        border = BorderStroke(1.dp, SiagaRust),
-        modifier = modifier.height((29f * scale).dp),
+private fun StatusIconRow(
+    state: EvacuationUiState,
+    selected: StatusDetailType?,
+    onSelect: (StatusDetailType) -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val gpsColor = gpsStatusColor(state)
+    val networkColor = networkStatusColor(state.isNetworkAvailable)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy((1f * scale).dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = (11f * scale).dp),
+        StatusIconButton(
+            color = gpsColor,
+            selected = selected == StatusDetailType.GPS,
+            showProblemBadge = !state.hasLocationPermission ||
+                state.locationQuality == LocationQuality.FAIR ||
+                state.locationQuality == LocationQuality.WEAK,
+            contentDescription = "Lihat status GPS",
+            scale = scale,
+            onClick = { onSelect(StatusDetailType.GPS) },
         ) {
-            Image(
-                painter = painterResource(R.drawable.ic_figma_offline),
-                contentDescription = null,
-                modifier = Modifier.size((15f * scale).dp),
+            GpsStatusIcon(color = gpsColor, modifier = Modifier.fillMaxSize())
+        }
+        StatusIconButton(
+            color = networkColor,
+            selected = selected == StatusDetailType.NETWORK,
+            showProblemBadge = state.isNetworkAvailable == false,
+            contentDescription = "Lihat status jaringan",
+            scale = scale,
+            onClick = { onSelect(StatusDetailType.NETWORK) },
+        ) {
+            NetworkStatusIcon(
+                color = networkColor,
+                modifier = Modifier.fillMaxSize(),
             )
-            Text(
-                text = "Data rute luring",
-                color = SiagaCream,
-                fontSize = (11f * scale).sp,
-            )
+        }
+    }
+}
+
+@Composable
+private fun StatusIconColumn(
+    state: EvacuationUiState,
+    selected: StatusDetailType?,
+    onSelect: (StatusDetailType) -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val gpsColor = gpsStatusColor(state)
+    val networkColor = networkStatusColor(state.isNetworkAvailable)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy((1f * scale).dp),
+        modifier = modifier,
+    ) {
+        StatusIconButton(
+            color = gpsColor,
+            selected = selected == StatusDetailType.GPS,
+            showProblemBadge = !state.hasLocationPermission ||
+                state.locationQuality == LocationQuality.FAIR ||
+                state.locationQuality == LocationQuality.WEAK,
+            contentDescription = "Lihat status GPS",
+            scale = scale,
+            buttonSizeDp = 40f,
+            onClick = { onSelect(StatusDetailType.GPS) },
+        ) {
+            GpsStatusIcon(color = gpsColor, modifier = Modifier.fillMaxSize())
+        }
+        StatusIconButton(
+            color = networkColor,
+            selected = selected == StatusDetailType.NETWORK,
+            showProblemBadge = state.isNetworkAvailable == false,
+            contentDescription = "Lihat status jaringan",
+            scale = scale,
+            buttonSizeDp = 40f,
+            onClick = { onSelect(StatusDetailType.NETWORK) },
+        ) {
+            NetworkStatusIcon(color = networkColor, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Composable
+private fun StatusIconButton(
+    color: Color,
+    selected: Boolean,
+    showProblemBadge: Boolean,
+    contentDescription: String,
+    scale: Float,
+    buttonSizeDp: Float = 48f,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size((buttonSizeDp * scale).dp)
+            .clip(CircleShape)
+            .background(if (selected) color.copy(alpha = 0.16f) else Color.Transparent)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+    ) {
+        Box(modifier = Modifier.size((29f * scale).dp)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size((23f * scale).dp),
+            ) {
+                content()
+            }
+            if (showProblemBadge) {
+                Surface(
+                    color = STATUS_ERROR_COLOR,
+                    contentColor = SiagaNavy,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, SiagaNavy),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .size((13f * scale).dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "!",
+                            fontSize = (9f * scale).sp,
+                            lineHeight = (9f * scale).sp,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GpsStatusIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.minDimension * 0.11f
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val innerRadius = size.minDimension * 0.27f
+        val tickStart = size.minDimension * 0.04f
+        val tickEnd = size.minDimension * 0.25f
+        drawCircle(color = color, radius = innerRadius, center = center, style = Stroke(strokeWidth))
+        drawCircle(color = color, radius = size.minDimension * 0.09f, center = center)
+        drawLine(color, Offset(center.x, tickStart), Offset(center.x, tickEnd), strokeWidth, StrokeCap.Round)
+        drawLine(
+            color,
+            Offset(center.x, size.height - tickStart),
+            Offset(center.x, size.height - tickEnd),
+            strokeWidth,
+            StrokeCap.Round,
+        )
+        drawLine(color, Offset(tickStart, center.y), Offset(tickEnd, center.y), strokeWidth, StrokeCap.Round)
+        drawLine(
+            color,
+            Offset(size.width - tickStart, center.y),
+            Offset(size.width - tickEnd, center.y),
+            strokeWidth,
+            StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun NetworkStatusIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.minDimension * 0.11f
+        val arcStyle = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        drawArc(
+            color = color,
+            startAngle = 225f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.05f, size.height * 0.03f),
+            size = Size(size.width * 0.90f, size.height * 0.90f),
+            style = arcStyle,
+        )
+        drawArc(
+            color = color,
+            startAngle = 225f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.24f, size.height * 0.23f),
+            size = Size(size.width * 0.52f, size.height * 0.52f),
+            style = arcStyle,
+        )
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.09f,
+            center = Offset(size.width / 2f, size.height * 0.79f),
+        )
+    }
+}
+
+@Composable
+private fun StatusDetailCard(
+    detail: StatusDetailType,
+    state: EvacuationUiState,
+    onDismiss: () -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val title: String
+    val message: String
+    val color: Color
+    when (detail) {
+        StatusDetailType.GPS -> {
+            title = gpsStatusTitle(state)
+            message = gpsStatusMessage(state)
+            color = gpsStatusColor(state)
+        }
+        StatusDetailType.NETWORK -> {
+            title = when (state.isNetworkAvailable) {
+                true -> "Jaringan tersedia"
+                false -> "Tanpa jaringan"
+                null -> "Memeriksa jaringan"
+            }
+            message = when (state.isNetworkAvailable) {
+                true -> "Perangkat terhubung. Navigasi dan data rute tetap diproses dari data luring."
+                false -> "GPS, kompas, zona, dan rute evakuasi tetap dapat digunakan tanpa jaringan."
+                null -> "Aplikasi sedang memeriksa koneksi perangkat."
+            }
+            color = networkStatusColor(state.isNetworkAvailable)
+        }
+    }
+    Surface(
+        color = SiagaCream,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((13f * scale).dp),
+        border = BorderStroke(1.dp, color),
+        shadowElevation = 8.dp,
+        modifier = modifier.width((258f * scale).dp),
+    ) {
+        Box {
+            Column(
+                verticalArrangement = Arrangement.spacedBy((5f * scale).dp),
+                modifier = Modifier.padding(
+                    start = (14f * scale).dp,
+                    top = (12f * scale).dp,
+                    end = (42f * scale).dp,
+                    bottom = (13f * scale).dp,
+                ),
+            ) {
+                Text(
+                    text = title,
+                    color = SiagaNavy,
+                    fontSize = (14f * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = message,
+                    color = SiagaNavy.copy(alpha = 0.78f),
+                    fontSize = (11f * scale).sp,
+                    lineHeight = (15f * scale).sp,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size((44f * scale).dp),
+            ) {
+                Text(
+                    text = "×",
+                    color = SiagaNavy,
+                    fontSize = (22f * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
@@ -331,11 +646,18 @@ private fun NavigationInstructionCard(
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
+    val isApproachingRoute = guidance?.isApproachingRoute == true
+    val displayedDestinationName = route.destinationName
     val instruction = guidance?.currentInstruction ?: ManeuverGuidance(
         type = ManeuverType.STRAIGHT,
         distanceMeters = estimatedDistanceMeters(route),
     )
     val presentation = maneuverPresentation(instruction.type)
+    val instructionLabel = maneuverInstructionLabel(
+        defaultLabel = presentation.label,
+        type = instruction.type,
+        isApproachingRoute = isApproachingRoute,
+    )
     val shape = RoundedCornerShape((18f * scale).dp)
     Surface(
         color = SiagaCream,
@@ -352,17 +674,16 @@ private fun NavigationInstructionCard(
         ) {
             Image(
                 painter = painterResource(presentation.drawableRes),
-                contentDescription = presentation.label,
+                contentDescription = instructionLabel,
                 colorFilter = if (presentation.tint) ColorFilter.tint(SiagaNavy) else null,
                 modifier = Modifier
                     .size((126f * scale).dp)
                     .graphicsLayer(
                         rotationZ = presentation.assetRotationDegrees,
-                        scaleX = if (presentation.mirrorHorizontally) -1f else 1f,
                     ),
             )
             Text(
-                text = presentation.label,
+                text = instructionLabel,
                 color = SiagaNavy,
                 fontSize = (24f * scale).sp,
                 fontWeight = FontWeight.Black,
@@ -371,21 +692,17 @@ private fun NavigationInstructionCard(
             )
             Spacer(modifier = Modifier.height((12f * scale).dp))
             Text(
-                text = if (instruction.type == ManeuverType.ARRIVE) {
-                    "Tujuan di depan"
-                } else {
-                    "${formatDistance(instruction.distanceMeters)} lagi"
-                },
+                text = maneuverDistanceMessage(instruction, isApproachingRoute),
                 color = SiagaNavy,
                 fontSize = (16f * scale).sp,
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = route.destinationName,
+                text = displayedDestinationName,
                 color = SiagaNavy,
-                fontSize = (20f * scale).sp,
+                fontSize = (destinationCardFontSize(displayedDestinationName) * scale).sp,
                 fontWeight = FontWeight.Bold,
-                lineHeight = (21f * scale).sp,
+                lineHeight = ((destinationCardFontSize(displayedDestinationName) + 1f) * scale).sp,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -432,14 +749,15 @@ private fun EvacuationTiming(
 @Composable
 private fun CountdownCard(remainingSeconds: Int, scale: Float) {
     Box(
-        contentAlignment = Alignment.BottomCenter,
-            modifier = Modifier.size(width = (150f * scale).dp, height = (73f * scale).dp),
+        modifier = Modifier.size(width = (180f * scale).dp, height = (91f * scale).dp),
     ) {
         Surface(
             color = Color.Transparent,
             border = BorderStroke(1.dp, Color(0xFFB9B9B9)),
             shape = RoundedCornerShape((9f * scale).dp),
             modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (12f * scale).dp)
                 .width((144f * scale).dp)
                 .height((61f * scale).dp),
         ) {
@@ -473,6 +791,15 @@ private fun CountdownCard(remainingSeconds: Int, scale: Float) {
                 )
             }
         }
+        Text(
+            text = "Dihitung sejak aplikasi dibuka",
+            color = SiagaCream.copy(alpha = 0.78f),
+            fontSize = (8f * scale).sp,
+            lineHeight = (10f * scale).sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -497,27 +824,40 @@ private fun NextInstructionStrip(
                 .fillMaxWidth()
                 .height((50f * scale).dp),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                instructions.forEachIndexed { index, instruction ->
-                    val presentation = maneuverPresentation(instruction.type)
-                    MiniInstruction(
-                        drawableRes = presentation.drawableRes,
-                        label = if (instruction.type == ManeuverType.ARRIVE) {
-                            "TES"
-                        } else {
-                            formatDistance(instruction.distanceMeters)
-                        },
-                        rotationDegrees = presentation.assetRotationDegrees,
-                        mirrorHorizontally = presentation.mirrorHorizontally,
-                        tint = presentation.tint || instruction.type != ManeuverType.ARRIVE,
-                        contentColor = if (index == 0) Color.White else SiagaNextGreen,
-                        scale = scale,
-                    )
-                    if (index < instructions.lastIndex) StepDot(scale, SiagaNextGreen)
+            Row(modifier = Modifier.fillMaxSize()) {
+                repeat(MAX_VISIBLE_INSTRUCTIONS) { index ->
+                    val instruction = instructions.getOrNull(index)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize(),
+                    ) {
+                        instruction?.let { item ->
+                            val presentation = maneuverPresentation(item.type)
+                            MiniInstruction(
+                                drawableRes = presentation.drawableRes,
+                                label = if (item.type == ManeuverType.ARRIVE) {
+                                    "TES"
+                                } else {
+                                    formatDistance(item.distanceMeters)
+                                },
+                                rotationDegrees = presentation.assetRotationDegrees,
+                                tint = presentation.tint || item.type != ManeuverType.ARRIVE,
+                                contentColor = if (index == 0) Color.White else SiagaNextGreen,
+                                scale = scale,
+                            )
+                        }
+                        if (index < MAX_VISIBLE_INSTRUCTIONS - 1 && instructions.getOrNull(index + 1) != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .offset(x = (2f * scale).dp),
+                            ) {
+                                StepDot(scale, SiagaNextGreen)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -548,7 +888,6 @@ private fun MiniInstruction(
     label: String,
     scale: Float,
     rotationDegrees: Float = 0f,
-    mirrorHorizontally: Boolean = false,
     tint: Boolean = false,
     contentColor: Color = Color.White,
 ) {
@@ -562,10 +901,7 @@ private fun MiniInstruction(
             colorFilter = if (tint) ColorFilter.tint(contentColor) else null,
             modifier = Modifier
                 .size((22f * scale).dp)
-                .graphicsLayer(
-                    rotationZ = rotationDegrees,
-                    scaleX = if (mirrorHorizontally) -1f else 1f,
-                ),
+                .graphicsLayer(rotationZ = rotationDegrees),
         )
         Text(
             text = label,
@@ -612,12 +948,43 @@ private fun MapPanelHandle(
             },
     ) {
         Surface(
-            color = Color(0xFF8B8B8B),
-            shape = CircleShape,
+            color = SiagaNextGreen,
+            contentColor = SiagaNavy,
+            shape = RoundedCornerShape((11f * scale).dp),
+            border = BorderStroke(1.dp, SiagaNavy.copy(alpha = 0.72f)),
+            shadowElevation = 7.dp,
             modifier = Modifier
-                .width((169f * scale).dp)
-                .height((5f * scale).dp),
-        ) {}
+                .width((74f * scale).dp)
+                .height((26f * scale).dp),
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        horizontal = (8f * scale).dp,
+                        vertical = (6f * scale).dp,
+                    )
+                    .graphicsLayer(rotationZ = expansionProgress * 180f),
+            ) {
+                val strokeWidth = (2f * scale).dp.toPx()
+                val arrowTip = Offset(size.width / 2f, strokeWidth / 2f)
+                val arrowBaseY = size.height - strokeWidth / 2f
+                drawLine(
+                    color = SiagaNavy,
+                    start = Offset(strokeWidth / 2f, arrowBaseY),
+                    end = arrowTip,
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = SiagaNavy,
+                    start = arrowTip,
+                    end = Offset(size.width - strokeWidth / 2f, arrowBaseY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
     }
 }
 
@@ -628,12 +995,14 @@ private fun EvacuationMapPanel(
     scale: Float,
     expansionProgress: Float,
     onBlockedRouteClick: () -> Unit,
+    onMapViewportChanged: (GeoCoordinate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var followUserLocation by rememberSaveable { mutableStateOf(true) }
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
     var routeOverviewRequest by rememberSaveable { mutableIntStateOf(0) }
     var routeChangeNotice by remember { mutableStateOf<String?>(null) }
+    var zoneStatusNotice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(state.alternativeRouteVersion) {
         if (state.alternativeRouteVersion > 0) {
             followUserLocation = false
@@ -641,6 +1010,13 @@ private fun EvacuationMapPanel(
             routeChangeNotice = state.alternativeRouteMessage
             delay(ROUTE_CHANGE_NOTICE_MILLIS)
             routeChangeNotice = null
+        }
+    }
+    LaunchedEffect(state.zoneTransitionVersion) {
+        if (state.zoneTransitionVersion > 0) {
+            zoneStatusNotice = state.zoneTransitionMessage
+            delay(ZONE_STATUS_NOTICE_MILLIS)
+            zoneStatusNotice = null
         }
     }
     val shape = RoundedCornerShape(
@@ -653,8 +1029,21 @@ private fun EvacuationMapPanel(
             .height(mapHeight)
             .clip(shape),
     ) {
+        val isApproachingRoute = state.guidance?.isApproachingRoute == true
+        val nearestRouteCoordinate = state.guidance?.nearestRouteCoordinate
         OfflineMap(
+            offlineRoadOverlay = state.offlineRoadOverlay,
+            isNetworkAvailable = state.isNetworkAvailable,
+            tsunamiZoneOverlay = state.tsunamiZoneOverlay,
             routeCoordinates = state.route?.coordinates.orEmpty(),
+            approachRouteCoordinates = if (
+                isApproachingRoute && state.currentLocation != null && nearestRouteCoordinate != null
+            ) {
+                listOf(state.currentLocation, nearestRouteCoordinate)
+            } else {
+                emptyList()
+            },
+            approachTargetLocation = if (isApproachingRoute) nearestRouteCoordinate else null,
             previousRouteCoordinates = state.previousRoutes.map { route -> route.coordinates },
             currentLocation = state.currentLocation,
             destinationLocation = state.route?.destinationCoordinate,
@@ -664,21 +1053,58 @@ private fun EvacuationMapPanel(
             followUserLocation = followUserLocation,
             recenterRequest = recenterRequest,
             routeOverviewRequest = routeOverviewRequest,
+            onViewportChanged = onMapViewportChanged,
             onUserMapGesture = { followUserLocation = false },
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (state.previousRoutes.isNotEmpty() && routeChangeNotice == null) {
-            PreviousRoutesLegend(
-                routes = state.previousRoutes,
-                scale = scale,
+        if (expansionProgress < 0.5f) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy((7f * scale).dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(
+                        start = (12f * scale).dp,
+                        bottom = (82f * scale).dp,
+                    )
+                    .zIndex(8f),
+            ) {
+                if (state.tsunamiZoneOverlay != null) {
+                    CompactTsunamiZoneIcon(scale = scale)
+                }
+                if (state.previousRoutes.isNotEmpty() || routeChangeNotice != null) {
+                    CompactRouteHistoryIcon(
+                        routeCount = state.previousRoutes.size,
+                        routeJustChanged = routeChangeNotice != null,
+                        scale = scale,
+                    )
+                }
+            }
+        } else if (
+            state.tsunamiZoneOverlay != null ||
+            state.previousRoutes.isNotEmpty() ||
+            routeChangeNotice != null
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy((6f * scale).dp),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(
                         start = (12f * scale).dp,
                         bottom = (80f * scale).dp,
-                    ),
-            )
+                    )
+                    .zIndex(8f),
+            ) {
+                if (state.tsunamiZoneOverlay != null) {
+                    TsunamiZoneLegend(scale = scale)
+                }
+                if (routeChangeNotice != null) {
+                    RouteChangeNotice(message = routeChangeNotice.orEmpty(), scale = scale)
+                } else if (state.previousRoutes.isNotEmpty()) {
+                    PreviousRoutesLegend(routes = state.previousRoutes, scale = scale)
+                }
+            }
         }
 
         state.route?.let { route ->
@@ -712,6 +1138,24 @@ private fun EvacuationMapPanel(
                 .size(lerp((68f * scale).dp, (64f * scale).dp, expansionProgress)),
         )
 
+        zoneStatusNotice?.let { message ->
+            ZoneStatusNotice(
+                message = message,
+                status = state.currentZoneStatus,
+                scale = scale,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(
+                        y = lerp(
+                            (47f * scale).dp,
+                            (184f * scale).dp,
+                            expansionProgress,
+                        ),
+                    )
+                    .zIndex(12f),
+            )
+        }
+
         if (state.currentLocation != null) {
             RecenterMapButton(
                 onClick = {
@@ -740,33 +1184,289 @@ private fun EvacuationMapPanel(
                 .padding(horizontal = (15f * scale).dp, vertical = (12f * scale).dp),
         )
 
-        routeChangeNotice?.let { message ->
-            Surface(
-                color = SiagaNextGreen,
-                contentColor = SiagaNavy,
-                shape = RoundedCornerShape((12f * scale).dp),
-                shadowElevation = 5.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = (22f * scale).dp,
-                        end = (22f * scale).dp,
-                        bottom = (78f * scale).dp,
-                    )
-                    .zIndex(10f),
+    }
+}
+
+@Composable
+private fun CompactTsunamiZoneIcon(
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaNavy.copy(alpha = 0.92f),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.82f)),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .size((39f * scale).dp)
+            .semantics { contentDescription = "Layer zona tsunami aktif" },
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy((2f * scale).dp),
+            modifier = Modifier.padding((10f * scale).dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy((2f * scale).dp),
+                modifier = Modifier.weight(1f),
             ) {
-                Text(
-                    text = message,
-                    fontSize = (14f * scale).sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(
-                        horizontal = (16f * scale).dp,
-                        vertical = (10f * scale).dp,
-                    ),
-                )
+                ZoneIconCell(ZONE_SAFE_COLOR, ZONE_SAFE_MAP_OPACITY, Modifier.weight(1f))
+                ZoneIconCell(ZONE_LOW_COLOR, ZONE_LOW_MAP_OPACITY, Modifier.weight(1f))
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy((2f * scale).dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                ZoneIconCell(ZONE_MEDIUM_COLOR, ZONE_MEDIUM_MAP_OPACITY, Modifier.weight(1f))
+                ZoneIconCell(ZONE_HIGH_COLOR, ZONE_HIGH_MAP_OPACITY, Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun ZoneIconCell(
+    baseColor: Color,
+    mapOpacity: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = zoneLegendDisplayColor(baseColor, mapOpacity),
+        shape = RoundedCornerShape(2.dp),
+        border = BorderStroke(0.7.dp, baseColor),
+        modifier = modifier.fillMaxSize(),
+    ) {}
+}
+
+@Composable
+private fun CompactRouteHistoryIcon(
+    routeCount: Int,
+    routeJustChanged: Boolean,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val accentColor = if (routeJustChanged) SiagaNextGreen else Color(0xFFB7BEC1)
+    Surface(
+        color = SiagaNavy.copy(alpha = 0.92f),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, accentColor),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .size((39f * scale).dp)
+            .semantics {
+                contentDescription = if (routeJustChanged) {
+                    "Rute alternatif baru dipilih"
+                } else {
+                    "$routeCount rute sebelumnya tersedia"
+                }
+            },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.size((23f * scale).dp)) {
+                val stroke = size.minDimension * 0.13f
+                drawLine(
+                    color = accentColor,
+                    start = Offset(size.width * 0.18f, size.height * 0.77f),
+                    end = Offset(size.width * 0.45f, size.height * 0.50f),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = accentColor,
+                    start = Offset(size.width * 0.45f, size.height * 0.50f),
+                    end = Offset(size.width * 0.76f, size.height * 0.22f),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+                drawCircle(accentColor, radius = stroke, center = Offset(size.width * 0.18f, size.height * 0.77f))
+                drawCircle(accentColor, radius = stroke, center = Offset(size.width * 0.76f, size.height * 0.22f))
+            }
+            if (routeCount > 0) {
+                Surface(
+                    color = accentColor,
+                    contentColor = SiagaNavy,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size((15f * scale).dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = routeCount.toString(),
+                            fontSize = (8f * scale).sp,
+                            lineHeight = (8f * scale).sp,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteChangeNotice(
+    message: String,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaNextGreen,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((10f * scale).dp),
+        shadowElevation = 4.dp,
+        modifier = modifier,
+    ) {
+        Text(
+            text = message,
+            fontSize = (12f * scale).sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            modifier = Modifier.padding(
+                horizontal = (11f * scale).dp,
+                vertical = (8f * scale).dp,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun ZoneStatusNotice(
+    message: String,
+    status: InundationZoneStatus?,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val backgroundColor = zoneStatusColor(status)
+    val contentColor = when (status) {
+        is InundationZoneStatus.InsideRecordedZone -> Color.White
+        InundationZoneStatus.OutsideRecordedZone -> SiagaNavy
+        else -> SiagaNavy
+    }
+    Surface(
+        color = backgroundColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape((14f * scale).dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.78f)),
+        shadowElevation = 6.dp,
+        modifier = modifier.semantics { contentDescription = message },
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(
+                horizontal = (13f * scale).dp,
+                vertical = (9f * scale).dp,
+            ),
+        ) {
+            Surface(
+                color = contentColor,
+                shape = CircleShape,
+                modifier = Modifier.size((8f * scale).dp),
+            ) {}
+            Text(
+                text = message,
+                fontSize = (12f * scale).sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TsunamiZoneLegend(
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Surface(
+        color = SiagaNavy.copy(alpha = 0.90f),
+        contentColor = Color.White,
+        shape = RoundedCornerShape((10f * scale).dp),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .clickable(role = Role.Button) { expanded = !expanded }
+            .semantics {
+                contentDescription = if (expanded) {
+                    "Ciutkan keterangan zona tsunami"
+                } else {
+                    "Buka keterangan zona tsunami"
+                }
+            },
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy((5f * scale).dp),
+            modifier = Modifier.padding((7f * scale).dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Zona tsunami",
+                    fontSize = (10f * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = if (expanded) "−" else "+",
+                    fontSize = (14f * scale).sp,
+                    fontWeight = FontWeight.Black,
+                )
+                if (!expanded) {
+                    listOf(
+                        ZONE_SAFE_COLOR to ZONE_SAFE_MAP_OPACITY,
+                        ZONE_LOW_COLOR to ZONE_LOW_MAP_OPACITY,
+                        ZONE_MEDIUM_COLOR to ZONE_MEDIUM_MAP_OPACITY,
+                        ZONE_HIGH_COLOR to ZONE_HIGH_MAP_OPACITY,
+                    ).forEach { (baseColor, mapOpacity) ->
+                        Surface(
+                            color = zoneLegendDisplayColor(baseColor, mapOpacity),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, baseColor),
+                            modifier = Modifier.size((11f * scale).dp),
+                        ) {}
+                    }
+                }
+            }
+            if (expanded) {
+                Row(horizontalArrangement = Arrangement.spacedBy((5f * scale).dp)) {
+                    ZoneLegendItem("Di luar rendaman", ZONE_SAFE_COLOR, ZONE_SAFE_MAP_OPACITY, scale)
+                    ZoneLegendItem("Risiko rendah", ZONE_LOW_COLOR, ZONE_LOW_MAP_OPACITY, scale)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy((5f * scale).dp)) {
+                    ZoneLegendItem("Risiko sedang", ZONE_MEDIUM_COLOR, ZONE_MEDIUM_MAP_OPACITY, scale)
+                    ZoneLegendItem("Risiko tinggi", ZONE_HIGH_COLOR, ZONE_HIGH_MAP_OPACITY, scale)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoneLegendItem(
+    label: String,
+    baseColor: Color,
+    mapOpacity: Float,
+    scale: Float,
+) {
+    Surface(
+        color = zoneLegendDisplayColor(baseColor, mapOpacity),
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((7f * scale).dp),
+        border = BorderStroke(1.dp, baseColor),
+        shadowElevation = 3.dp,
+    ) {
+        Text(
+            text = label,
+            color = SiagaNavy,
+            fontSize = (9f * scale).sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.padding(
+                horizontal = (7f * scale).dp,
+                vertical = (5f * scale).dp,
+            ),
+        )
     }
 }
 
@@ -776,43 +1476,89 @@ private fun PreviousRoutesLegend(
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
     Column(
         verticalArrangement = Arrangement.spacedBy((6f * scale).dp),
         modifier = modifier,
     ) {
-        routes.forEachIndexed { index, route ->
-            Surface(
-                color = SiagaNavy.copy(alpha = 0.88f),
-                contentColor = SiagaCream,
-                shape = RoundedCornerShape((8f * scale).dp),
-                shadowElevation = 3.dp,
+        Surface(
+            color = SiagaNavy.copy(alpha = 0.90f),
+            contentColor = SiagaCream,
+            shape = RoundedCornerShape((9f * scale).dp),
+            shadowElevation = 3.dp,
+            modifier = Modifier
+                .clickable(role = Role.Button) { expanded = !expanded }
+                .semantics {
+                    contentDescription = if (expanded) {
+                        "Ciutkan daftar rute sebelumnya"
+                    } else {
+                        "Buka ${routes.size} rute sebelumnya"
+                    }
+                },
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(
+                    horizontal = (10f * scale).dp,
+                    vertical = (7f * scale).dp,
+                ),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(
-                        horizontal = (10f * scale).dp,
-                        vertical = (7f * scale).dp,
-                    ),
+                Surface(
+                    color = Color(0xFF8C9497),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .width((24f * scale).dp)
+                        .height((4f * scale).dp),
+                ) {}
+                Text(
+                    text = "Rute sebelumnya (${routes.size})",
+                    fontSize = (11f * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    text = if (expanded) "−" else "+",
+                    fontSize = (14f * scale).sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+        if (expanded) {
+            routes.forEachIndexed { index, route ->
+                Surface(
+                    color = SiagaNavy.copy(alpha = 0.88f),
+                    contentColor = SiagaCream,
+                    shape = RoundedCornerShape((8f * scale).dp),
+                    shadowElevation = 3.dp,
                 ) {
-                    Surface(
-                        color = Color(0xFF8C9497),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .width((24f * scale).dp)
-                            .height((4f * scale).dp),
-                    ) {}
-                    Text(
-                        text = buildString {
-                            append(if (index == 0) "Rute utama" else "Alternatif $index")
-                            append(" · ±")
-                            append(estimatedMinutes(route))
-                            append(" menit")
-                        },
-                        fontSize = (12f * scale).sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(
+                            horizontal = (10f * scale).dp,
+                            vertical = (7f * scale).dp,
+                        ),
+                    ) {
+                        Surface(
+                            color = Color(0xFF8C9497),
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .width((24f * scale).dp)
+                                .height((4f * scale).dp),
+                        ) {}
+                        Text(
+                            text = buildString {
+                                append(if (index == 0) "Rute utama" else "Alternatif $index")
+                                append(" · ±")
+                                append(estimatedMinutes(route))
+                                append(" menit")
+                            },
+                            fontSize = (11f * scale).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
@@ -984,6 +1730,8 @@ private fun ExpandedMapHeader(
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
+    val isApproachingRoute = guidance?.isApproachingRoute == true
+    val displayedDestinationName = route.destinationName
     val instruction = guidance?.currentInstruction ?: ManeuverGuidance(
         ManeuverType.STRAIGHT,
         estimatedDistanceMeters(route),
@@ -1010,13 +1758,16 @@ private fun ExpandedMapHeader(
                         .padding(start = (20f * scale).dp, top = (15f * scale).dp),
                 ) {
                     Text(
-                        text = route.destinationName,
+                        text = displayedDestinationName,
                         color = SiagaCream,
-                        fontSize = (20f * scale).sp,
+                        fontSize = (expandedDestinationFontSize(displayedDestinationName) * scale).sp,
+                        lineHeight = (
+                            (expandedDestinationFontSize(displayedDestinationName) + 1f) * scale
+                            ).sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width((245f * scale).dp),
+                        modifier = Modifier.width((205f * scale).dp),
                     )
                     Text(
                         text = formatDistance(
@@ -1036,6 +1787,7 @@ private fun ExpandedMapHeader(
 
                 CompactManeuverCard(
                     instruction = instruction,
+                    isApproachingRoute = isApproachingRoute,
                     scale = scale,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1070,10 +1822,16 @@ private fun ExpandedMapHeader(
 @Composable
 private fun CompactManeuverCard(
     instruction: ManeuverGuidance,
+    isApproachingRoute: Boolean,
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
     val presentation = maneuverPresentation(instruction.type)
+    val instructionLabel = maneuverInstructionLabel(
+        defaultLabel = presentation.label,
+        type = instruction.type,
+        isApproachingRoute = isApproachingRoute,
+    )
     Surface(
         color = SiagaCream,
         contentColor = SiagaNavy,
@@ -1087,17 +1845,16 @@ private fun CompactManeuverCard(
         ) {
             Image(
                 painter = painterResource(presentation.drawableRes),
-                contentDescription = null,
+                contentDescription = instructionLabel,
                 colorFilter = if (presentation.tint) ColorFilter.tint(SiagaNavy) else null,
                 modifier = Modifier
                     .size((53f * scale).dp)
                     .graphicsLayer(
                         rotationZ = presentation.assetRotationDegrees,
-                        scaleX = if (presentation.mirrorHorizontally) -1f else 1f,
                     ),
             )
             Text(
-                text = presentation.label,
+                text = instructionLabel,
                 color = SiagaNavy,
                 fontSize = (11f * scale).sp,
                 fontWeight = FontWeight.Black,
@@ -1117,6 +1874,10 @@ private fun VerticalInstructionStrip(
     val instructions = guidance?.instructions.orEmpty().ifEmpty {
         listOf(ManeuverGuidance(ManeuverType.STRAIGHT, 0))
     }.take(4)
+    val adaptiveHeight = (
+        EXPANDED_STRIP_BASE_HEIGHT_DP +
+            (instructions.size - 1) * EXPANDED_STRIP_STEP_HEIGHT_DP
+        ) * scale
     Surface(
         color = SiagaNavy,
         contentColor = Color.White,
@@ -1124,7 +1885,7 @@ private fun VerticalInstructionStrip(
         border = BorderStroke(1.dp, Color(0xFFB9B9B9)),
         modifier = modifier
             .width((53f * scale).dp)
-            .height((291f * scale).dp),
+            .height(adaptiveHeight.dp),
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1141,7 +1902,6 @@ private fun VerticalInstructionStrip(
                         formatDistance(instruction.distanceMeters)
                     },
                     rotationDegrees = presentation.assetRotationDegrees,
-                    mirrorHorizontally = presentation.mirrorHorizontally,
                     tint = instruction.type != ManeuverType.ARRIVE,
                     contentColor = if (index == 0) Color.White else SiagaNextGreen,
                     scale = scale,
@@ -1189,7 +1949,7 @@ private fun BlockedRouteButton(
     modifier: Modifier = Modifier,
 ) {
     val label = when {
-        hasArrived -> "Anda telah tiba di TES"
+        hasArrived -> "Anda telah sampai di TES"
         isLoading -> "Mencari alternatif tujuan…"
         enabled -> "Jalur terhalang?"
         else -> "Alternatif tujuan tidak tersedia"
@@ -1441,6 +2201,7 @@ private fun BlockedRouteDialog(
 @Composable
 private fun ArrivalDialog(
     destinationName: String,
+    destinationCapacityPeople: Int?,
     onAcknowledge: () -> Unit,
 ) {
     Dialog(
@@ -1480,7 +2241,7 @@ private fun ArrivalDialog(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Anda telah tiba di TES",
+                    text = "Anda telah sampai di TES",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center,
@@ -1495,6 +2256,17 @@ private fun ArrivalDialog(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                destinationCapacityPeople?.takeIf { capacity -> capacity > 0 }?.let { capacity ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Kapasitas rancangan BPBD: ${formatPeople(capacity)} orang. " +
+                            "Bukan data keterisian langsung.",
+                        color = SiagaNavy.copy(alpha = 0.78f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Spacer(modifier = Modifier.height(18.dp))
                 Surface(
                     color = SiagaNavy,
@@ -1531,7 +2303,7 @@ private fun ArrivalDialog(
                         .height(52.dp),
                 ) {
                     Text(
-                        text = "Saya sudah aman",
+                        text = "Saya mengerti",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -1545,7 +2317,6 @@ private data class DirectionPresentation(
     val label: String,
     val drawableRes: Int,
     val assetRotationDegrees: Float = 0f,
-    val mirrorHorizontally: Boolean = false,
     val tint: Boolean = false,
 )
 
@@ -1576,18 +2347,15 @@ private fun maneuverPresentation(type: ManeuverType): DirectionPresentation = wh
         )
         ManeuverType.SLIGHT_LEFT -> DirectionPresentation(
             label = "Sedikit ke kiri",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = 90f,
+            drawableRes = R.drawable.ic_maneuver_turn_left,
         )
         ManeuverType.LEFT -> DirectionPresentation(
             label = "Belok kiri",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = 90f,
+            drawableRes = R.drawable.ic_maneuver_turn_left,
         )
         ManeuverType.SHARP_LEFT -> DirectionPresentation(
             label = "Belok tajam kiri",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = 90f,
+            drawableRes = R.drawable.ic_maneuver_turn_left,
         )
         ManeuverType.ARRIVE -> DirectionPresentation(
             label = "Tiba di TES",
@@ -1606,11 +2374,123 @@ private fun formatDistance(distanceMeters: Int): String = when {
     else -> "%.1f km".format(distanceMeters / 1_000.0)
 }
 
+private fun maneuverDistanceMessage(
+    instruction: ManeuverGuidance,
+    isApproachingRoute: Boolean = false,
+): String = when {
+    isApproachingRoute && instruction.distanceMeters <= ROAD_ENTRY_REACHED_DISTANCE_METERS ->
+        "Jalan di depan"
+    isApproachingRoute -> "${formatDistance(instruction.distanceMeters)} ke jalan"
+    instruction.type == ManeuverType.ARRIVE -> "Tujuan di depan"
+    instruction.distanceMeters <= MANEUVER_NOW_DISTANCE_METERS &&
+        instruction.type == ManeuverType.STRAIGHT -> "Lanjut lurus"
+    instruction.distanceMeters <= MANEUVER_NOW_DISTANCE_METERS -> "Belok sekarang"
+    else -> "${formatDistance(instruction.distanceMeters)} lagi"
+}
+
+private fun maneuverInstructionLabel(
+    defaultLabel: String,
+    type: ManeuverType,
+    isApproachingRoute: Boolean,
+): String {
+    if (!isApproachingRoute) return defaultLabel
+    return when (type) {
+        ManeuverType.STRAIGHT -> "Ke depan"
+        ManeuverType.SLIGHT_LEFT, ManeuverType.LEFT, ManeuverType.SHARP_LEFT -> "Ke kiri"
+        ManeuverType.SLIGHT_RIGHT, ManeuverType.RIGHT, ManeuverType.SHARP_RIGHT -> "Ke kanan"
+        ManeuverType.U_TURN -> "Putar balik"
+        ManeuverType.ARRIVE -> "Jalan tercapai"
+    }
+}
+
 private fun formatDuration(totalSeconds: Int, spaced: Boolean = false): String {
     val minutes = totalSeconds.coerceAtLeast(0) / 60
     val seconds = totalSeconds.coerceAtLeast(0) % 60
     val separator = if (spaced) " : " else ":"
     return "%02d%s%02d".format(minutes, separator, seconds)
+}
+
+private fun formatPeople(value: Int): String = String.format("%,d", value).replace(',', '.')
+
+private fun destinationCardFontSize(destinationName: String): Float = when {
+    destinationName.length <= 18 -> 20f
+    destinationName.length <= 26 -> 17f
+    destinationName.length <= 34 -> 15f
+    else -> 13f
+}
+
+private fun expandedDestinationFontSize(destinationName: String): Float = when {
+    destinationName.length <= 16 -> 20f
+    destinationName.length <= 24 -> 17f
+    destinationName.length <= 34 -> 14f
+    else -> 12f
+}
+
+private fun gpsStatusColor(state: EvacuationUiState): Color = when {
+    !state.hasLocationPermission -> STATUS_ERROR_COLOR
+    state.locationQuality == LocationQuality.GOOD -> SiagaNextGreen
+    state.locationQuality == LocationQuality.FAIR -> STATUS_CAUTION_COLOR
+    state.locationQuality == LocationQuality.WEAK -> STATUS_ERROR_COLOR
+    else -> STATUS_UNKNOWN_COLOR
+}
+
+private fun gpsStatusTitle(state: EvacuationUiState): String = when {
+    !state.hasLocationPermission -> "GPS tidak aktif"
+    state.locationQuality == LocationQuality.GOOD -> "GPS akurat"
+    state.locationQuality == LocationQuality.FAIR -> "GPS cukup akurat"
+    state.locationQuality == LocationQuality.WEAK -> "Sinyal GPS lemah"
+    else -> "Mencari lokasi"
+}
+
+private fun gpsStatusMessage(state: EvacuationUiState): String {
+    if (!state.hasLocationPermission) {
+        return "Izin lokasi diperlukan agar posisi dan arahan evakuasi dapat ditentukan."
+    }
+    val accuracyMessage = when (state.locationQuality) {
+        LocationQuality.GOOD -> "Perkiraan akurasi ±${state.locationAccuracyMeters?.toInt() ?: 0} meter."
+        LocationQuality.FAIR ->
+            "Perkiraan akurasi ±${state.locationAccuracyMeters?.toInt() ?: 0} meter. Tetap perhatikan jalan sekitar."
+        LocationQuality.WEAK ->
+            "Akurasi hanya sekitar ±${state.locationAccuracyMeters?.toInt() ?: 0} meter. Cari area yang lebih terbuka."
+        LocationQuality.SEARCHING -> "Tunggu sebentar atau berpindah ke area yang lebih terbuka."
+    }
+    val routeDeviation = state.guidance?.distanceFromRouteMeters
+    return if (
+        state.locationQuality != LocationQuality.WEAK &&
+        routeDeviation != null &&
+        routeDeviation >= OFF_ROUTE_WARNING_METERS
+    ) {
+        "$accuracyMessage Posisi terdeteksi sekitar $routeDeviation meter dari garis rute."
+    } else {
+        accuracyMessage
+    }
+}
+
+private fun networkStatusColor(isAvailable: Boolean?): Color = when (isAvailable) {
+    true -> SiagaNextGreen
+    false -> STATUS_ERROR_COLOR
+    null -> STATUS_UNKNOWN_COLOR
+}
+
+private fun zoneStatusColor(status: InundationZoneStatus?): Color = when (status) {
+    InundationZoneStatus.OutsideRecordedZone -> SiagaCream
+    is InundationZoneStatus.InsideRecordedZone -> SiagaRust
+    else -> STATUS_UNKNOWN_COLOR
+}
+
+private fun zoneLegendDisplayColor(baseColor: Color, mapOpacity: Float): Color {
+    val backdrop = SiagaCream
+    return Color(
+        red = baseColor.red * mapOpacity + backdrop.red * (1f - mapOpacity),
+        green = baseColor.green * mapOpacity + backdrop.green * (1f - mapOpacity),
+        blue = baseColor.blue * mapOpacity + backdrop.blue * (1f - mapOpacity),
+        alpha = 1f,
+    )
+}
+
+private enum class StatusDetailType {
+    GPS,
+    NETWORK,
 }
 
 private enum class MapPanelValue {
@@ -1627,3 +2507,22 @@ private const val FIGMA_WIDTH_DP = 390f
 private const val FIGMA_MAP_HEIGHT_DP = 269f
 private const val WALKING_SPEED_METERS_PER_SECOND = 1.2
 private const val ROUTE_CHANGE_NOTICE_MILLIS = 3_500L
+private const val ZONE_STATUS_NOTICE_MILLIS = 5_000L
+private const val MANEUVER_NOW_DISTANCE_METERS = 20
+private const val ROAD_ENTRY_REACHED_DISTANCE_METERS = 6
+private const val OFF_ROUTE_WARNING_METERS = 40
+private const val MAX_VISIBLE_INSTRUCTIONS = 4
+private const val EXPANDED_STRIP_BASE_HEIGHT_DP = 67f
+private const val EXPANDED_STRIP_STEP_HEIGHT_DP = 74f
+// Nilai warna dan opasitas ini harus tetap sama dengan layer pada OfflineMap.
+private val ZONE_SAFE_COLOR = Color(0xFF00D26A)
+private val ZONE_LOW_COLOR = Color(0xFFFFD400)
+private val ZONE_MEDIUM_COLOR = Color(0xFFFF6D00)
+private val ZONE_HIGH_COLOR = Color(0xFFFF1744)
+private const val ZONE_SAFE_MAP_OPACITY = 0.10f
+private const val ZONE_LOW_MAP_OPACITY = 0.12f
+private const val ZONE_MEDIUM_MAP_OPACITY = 0.14f
+private const val ZONE_HIGH_MAP_OPACITY = 0.16f
+private val STATUS_CAUTION_COLOR = Color(0xFFFFD166)
+private val STATUS_ERROR_COLOR = Color(0xFFFF6B6B)
+private val STATUS_UNKNOWN_COLOR = Color(0xFFB9C4C9)

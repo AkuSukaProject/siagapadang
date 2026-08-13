@@ -3,6 +3,7 @@ package com.akusukaproject.siagapadang.ui.evacuation
 import android.annotation.SuppressLint
 import android.app.Application
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -12,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
@@ -27,11 +29,14 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class EvacuationViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SiagaPadangApplication
     private val repository = app.evacuationRepository
+    private val zoneRepository = app.zoneRepository
     private val mutableUiState = MutableStateFlow(EvacuationUiState())
     val uiState: StateFlow<EvacuationUiState> = mutableUiState.asStateFlow()
 
@@ -39,9 +44,77 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private var compassJob: Job? = null
     private var routeJob: Job? = null
     private var countdownJob: Job? = null
+    private var zoneStatusJob: Job? = null
+    private var offlineRoadOverlayJob: Job? = null
     private var initialRouteRequested = false
+    private var minimumRouteIndex = 0
+    private var announcedManeuverIndex: Int? = null
+    private var lastZoneCheckLocation: GeoCoordinate? = null
+    private var lastOfflineRoadCenter: GeoCoordinate? = null
+    private var confirmedZoneKey: String? = null
+    private var pendingZoneKey: String? = null
+    private var pendingZoneConfirmationCount = 0
+    private val countdownStartedAtElapsedMillis = SystemClock.elapsedRealtime()
     private val rejectedDestinationNames = mutableSetOf<String>()
     private val arrivalTracker = ArrivalConfirmationTracker()
+
+    init {
+        loadTsunamiZoneOverlay()
+        monitorNetworkStatus()
+        startCountdown()
+    }
+
+    fun onMapViewportChanged(center: GeoCoordinate) {
+        val previousCenter = lastOfflineRoadCenter
+        if (
+            previousCenter != null &&
+            NearestNodeFinder.distanceMeters(previousCenter, center) < ROAD_VIEWPORT_RELOAD_METERS
+        ) {
+            return
+        }
+        lastOfflineRoadCenter = center
+        offlineRoadOverlayJob?.cancel()
+        offlineRoadOverlayJob = viewModelScope.launch {
+            delay(ROAD_VIEWPORT_DEBOUNCE_MILLIS)
+            runCatching { repository.loadOfflineRoadOverlay(center) }
+                .onSuccess { overlay ->
+                    mutableUiState.update { state ->
+                        state.copy(offlineRoadOverlay = overlay)
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Jaringan jalan lokal tidak dapat dimuat", error)
+                }
+        }
+    }
+
+    private fun monitorNetworkStatus() {
+        viewModelScope.launch {
+            app.networkStatusProvider.availability()
+                .catch {
+                    mutableUiState.update { state -> state.copy(isNetworkAvailable = false) }
+                }
+                .collect { isAvailable ->
+                    mutableUiState.update { state ->
+                        state.copy(isNetworkAvailable = isAvailable)
+                    }
+                }
+        }
+    }
+
+    private fun loadTsunamiZoneOverlay() {
+        viewModelScope.launch {
+            runCatching { zoneRepository.loadMapOverlay() }
+                .onSuccess { overlay ->
+                    mutableUiState.update { state ->
+                        state.copy(tsunamiZoneOverlay = overlay)
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Layer zona tsunami tidak dapat dimuat", error)
+                }
+        }
+    }
 
     fun onLocationPermissionChanged(granted: Boolean) {
         mutableUiState.update { state ->
@@ -82,6 +155,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             }.onSuccess { route ->
                 rejectedDestinationNames += currentRoute.destinationName
                 arrivalTracker.reset()
+                resetRouteProgress()
                 mutableUiState.update { state ->
                     withGuidance(
                         state.copy(
@@ -93,7 +167,10 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             remainingAlternativeCount =
                                 (state.remainingAlternativeCount - 1).coerceAtLeast(0),
                             alternativeRouteVersion = state.alternativeRouteVersion + 1,
-                            alternativeRouteMessage = "Rute dialihkan ke ${route.destinationName}",
+                            alternativeRouteMessage = buildAlternativeRouteMessage(
+                                previousRoute = currentRoute,
+                                newRoute = route,
+                            ),
                             hasArrived = false,
                             arrivalDistanceMeters = null,
                         ),
@@ -132,7 +209,9 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             updatedState
                         }
                         if (arrivalConfirmedNow) onArrivalConfirmed()
+                        if (!arrivalConfirmedNow) maybeVibrateUpcomingManeuver()
                         requestInitialRoute(deviceLocation.coordinate)
+                        evaluateCurrentZone(deviceLocation.coordinate)
                     }
             }
         }
@@ -147,9 +226,11 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     .collect { heading ->
                         mutableUiState.update { state ->
-                            state.copy(
-                                deviceHeadingDegrees = heading,
-                                compassMessage = null,
+                            withGuidance(
+                                state.copy(
+                                    deviceHeadingDegrees = heading,
+                                    compassMessage = null,
+                                ),
                             )
                         }
                     }
@@ -170,6 +251,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 logRouteTiming(elapsedMillis)
                 rejectedDestinationNames.clear()
                 arrivalTracker.reset()
+                resetRouteProgress()
                 mutableUiState.update { state ->
                     withGuidance(
                         state.copy(
@@ -196,21 +278,97 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private fun evaluateCurrentZone(location: GeoCoordinate) {
+        val movedMeters = lastZoneCheckLocation?.let { previous ->
+            NearestNodeFinder.distanceMeters(previous, location)
+        } ?: Double.POSITIVE_INFINITY
+        if (movedMeters < MIN_ZONE_CHECK_MOVEMENT_METERS || zoneStatusJob?.isActive == true) return
+        lastZoneCheckLocation = location
+        zoneStatusJob = viewModelScope.launch {
+            runCatching { zoneRepository.findStatus(location) }
+                .onSuccess(::applyZoneStatus)
+                .onFailure { error -> Log.w(LOG_TAG, "Status zona tidak dapat diperbarui", error) }
+        }
+    }
+
+    private fun applyZoneStatus(status: InundationZoneStatus) {
+        if (status == InundationZoneStatus.DataUnavailable) return
+        val candidateKey = status.zoneCategoryKey()
+        if (confirmedZoneKey == null) {
+            confirmZoneStatus(status, candidateKey, isInitial = true)
+            return
+        }
+        if (candidateKey == confirmedZoneKey) {
+            pendingZoneKey = null
+            pendingZoneConfirmationCount = 0
+            return
+        }
+        if (pendingZoneKey == candidateKey) {
+            pendingZoneConfirmationCount += 1
+        } else {
+            pendingZoneKey = candidateKey
+            pendingZoneConfirmationCount = 1
+        }
+        if (pendingZoneConfirmationCount >= REQUIRED_ZONE_TRANSITION_CONFIRMATIONS) {
+            confirmZoneStatus(status, candidateKey, isInitial = false)
+        }
+    }
+
+    private fun confirmZoneStatus(
+        status: InundationZoneStatus,
+        categoryKey: String,
+        isInitial: Boolean,
+    ) {
+        confirmedZoneKey = categoryKey
+        pendingZoneKey = null
+        pendingZoneConfirmationCount = 0
+        mutableUiState.update { state ->
+            state.copy(
+                currentZoneStatus = status,
+                zoneTransitionVersion = state.zoneTransitionVersion + 1,
+                zoneTransitionMessage = status.zoneMessage(isInitial),
+            )
+        }
+    }
+
+    private fun InundationZoneStatus.zoneCategoryKey(): String = when (this) {
+        InundationZoneStatus.DataUnavailable -> "unknown"
+        InundationZoneStatus.OutsideRecordedZone -> "safe"
+        is InundationZoneStatus.InsideRecordedZone ->
+            "risk-${dangerLevel.trim().lowercase()}"
+    }
+
+    private fun InundationZoneStatus.zoneMessage(isInitial: Boolean): String = when (this) {
+        InundationZoneStatus.DataUnavailable -> "Status zona belum tersedia"
+        InundationZoneStatus.OutsideRecordedZone ->
+            if (isInitial) {
+                "Lokasi Anda di luar zona rendaman"
+            } else {
+                "Lokasi Anda keluar dari zona rendaman"
+            }
+        is InundationZoneStatus.InsideRecordedZone ->
+            if (isInitial) {
+                "Lokasi Anda di zona rendaman"
+            } else {
+                "Lokasi Anda memasuki zona rendaman"
+            }
+    }
+
     private fun startCountdown() {
         if (countdownJob != null) return
         countdownJob = viewModelScope.launch {
-            while (
-                isActive &&
-                !mutableUiState.value.hasArrived &&
-                mutableUiState.value.remainingEvacuationSeconds > 0
-            ) {
-                delay(1_000)
+            while (isActive && !mutableUiState.value.hasArrived) {
+                val elapsedSeconds = (
+                    (SystemClock.elapsedRealtime() - countdownStartedAtElapsedMillis) / 1_000L
+                    ).toInt()
+                val remainingSeconds = (
+                    EvacuationUiState.EVACUATION_WINDOW_SECONDS - elapsedSeconds
+                    ).coerceAtLeast(0)
                 mutableUiState.update { state ->
-                    state.copy(
-                        remainingEvacuationSeconds =
-                            (state.remainingEvacuationSeconds - 1).coerceAtLeast(0),
-                    )
+                    state.copy(remainingEvacuationSeconds = remainingSeconds)
                 }
+                if (remainingSeconds == 0) break
+                delay(1_000)
             }
         }
     }
@@ -218,8 +376,17 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private fun withGuidance(state: EvacuationUiState): EvacuationUiState {
         val location = state.currentLocation ?: return state
         val routeCoordinates = state.route?.coordinates ?: return state
+        val guidance = RouteGuidanceCalculator.calculate(
+            currentLocation = location,
+            routeCoordinates = routeCoordinates,
+            minimumRouteIndex = minimumRouteIndex,
+            deviceHeadingDegrees = state.deviceHeadingDegrees,
+        )
+        guidance?.let { snapshot ->
+            minimumRouteIndex = maxOf(minimumRouteIndex, snapshot.nearestRouteIndex)
+        }
         return state.copy(
-            guidance = RouteGuidanceCalculator.calculate(location, routeCoordinates),
+            guidance = guidance,
         )
     }
 
@@ -267,20 +434,58 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         vibrateArrivalPattern()
     }
 
+    private fun resetRouteProgress() {
+        minimumRouteIndex = 0
+        announcedManeuverIndex = null
+    }
+
+    private fun maybeVibrateUpcomingManeuver() {
+        val instruction = mutableUiState.value.guidance?.currentInstruction ?: return
+        if (
+            instruction.type == ManeuverType.STRAIGHT ||
+            instruction.type == ManeuverType.ARRIVE ||
+            instruction.distanceMeters > MANEUVER_ALERT_DISTANCE_METERS ||
+            instruction.routeCoordinateIndex == announcedManeuverIndex
+        ) {
+            return
+        }
+        announcedManeuverIndex = instruction.routeCoordinateIndex
+        vibratePattern(longArrayOf(0L, 120L))
+    }
+
+    private fun buildAlternativeRouteMessage(
+        previousRoute: EvacuationRoute,
+        newRoute: EvacuationRoute,
+    ): String {
+        val differenceSeconds = newRoute.estimatedSeconds - previousRoute.estimatedSeconds
+        val comparison = when {
+            abs(differenceSeconds) < 30 -> "waktu hampir sama"
+            differenceSeconds > 0 ->
+                "+${ceil(differenceSeconds / 60.0).toInt()} menit"
+            else ->
+                "${ceil(abs(differenceSeconds) / 60.0).toInt()} menit lebih cepat"
+        }
+        return "Rute baru ke ${newRoute.destinationName} · $comparison"
+    }
+
     @Suppress("DEPRECATION")
     private fun vibrateArrivalPattern() {
+        vibratePattern(longArrayOf(0L, 180L, 100L, 260L))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibratePattern(pattern: LongArray) {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             app.getSystemService(VibratorManager::class.java)?.defaultVibrator
         } else {
             app.getSystemService(Vibrator::class.java)
         } ?: return
         if (!vibrator.hasVibrator()) return
-        vibrator.vibrate(
-            VibrationEffect.createWaveform(
-                longArrayOf(0L, 180L, 100L, 260L),
-                -1,
-            ),
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        } else {
+            vibrator.vibrate(pattern, -1)
+        }
     }
 
     @SuppressLint("LogNotTimber")
@@ -291,5 +496,10 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     private companion object {
         const val LOG_TAG = "EvacuationTiming"
+        const val MANEUVER_ALERT_DISTANCE_METERS = 30
+        const val MIN_ZONE_CHECK_MOVEMENT_METERS = 12.0
+        const val REQUIRED_ZONE_TRANSITION_CONFIRMATIONS = 2
+        const val ROAD_VIEWPORT_RELOAD_METERS = 500.0
+        const val ROAD_VIEWPORT_DEBOUNCE_MILLIS = 120L
     }
 }

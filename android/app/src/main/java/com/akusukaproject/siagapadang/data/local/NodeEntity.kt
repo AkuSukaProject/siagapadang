@@ -11,5 +11,6 @@ data class NodeEntity(
     val nodeId: Long?,
     val lat: Double?,
     val lon: Double?,
+    @ColumnInfo(name = "is_safe", defaultValue = "0")
+    val isSafe: Int?,
 )
-

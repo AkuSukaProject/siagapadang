@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <FrameLayout
+        android:id="@+id/widget_card"
+        android:layout_width="163dp"
+        android:layout_height="163dp"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_figma_unknown_background_compact"
+        android:clipToOutline="true"
+        android:elevation="4dp">
+
+    <TextView
+        android:id="@+id/widget_safe_fill"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_figma_safe_background_compact"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_danger_fill"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_figma_danger_background_compact"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_unknown_fill"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_figma_unknown_background_compact"
+        android:importantForAccessibility="no" />
+
+    <ImageView
+        android:id="@+id/widget_safe_background"
+        android:layout_width="163dp"
+        android:layout_height="163dp"
+        android:layout_gravity="start|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_safe_bg_compact"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/widget_safe_character"
+        android:layout_width="145dp"
+        android:layout_height="93dp"
+        android:layout_gravity="end|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_safe_character_compact"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/widget_danger_background"
+        android:layout_width="163dp"
+        android:layout_height="119dp"
+        android:layout_gravity="start|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_danger_bg_compact"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/widget_danger_character"
+        android:layout_width="117dp"
+        android:layout_height="89dp"
+        android:layout_gravity="end|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_danger_character_compact"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/widget_unknown_background"
+        android:layout_width="163dp"
+        android:layout_height="84dp"
+        android:layout_gravity="start|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_unknown_bg_compact" />
+
+    <ImageView
+        android:id="@+id/widget_unknown_character"
+        android:layout_width="150dp"
+        android:layout_height="95dp"
+        android:layout_gravity="end|bottom"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/figma_widget_unknown_character_compact" />
+
+    <TextView
+        android:id="@+id/widget_zone_status"
+        android:layout_width="151dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="7dp"
+        android:layout_marginTop="9dp"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-black"
+        android:maxLines="1"
+        android:text="@string/widget_location_unreadable"
+        android:textColor="@android:color/white"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/widget_zone_detail"
+        android:layout_width="145dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="7dp"
+        android:layout_marginTop="31dp"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1"
+        android:text="@string/widget_enable_location_permission"
+        android:textColor="@android:color/white"
+        android:textSize="9sp" />
+
+    <ImageView
+        android:id="@+id/widget_route_icon"
+        android:layout_width="17dp"
+        android:layout_height="17dp"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="51dp"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:src="@drawable/figma_widget_danger_turn_icon"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_destination_name"
+        android:layout_width="124dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="34dp"
+        android:layout_marginTop="49dp"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1"
+        android:textColor="@android:color/white"
+        android:textSize="8sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_distance"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="34dp"
+        android:layout_marginTop="59dp"
+        android:fontFamily="sans-serif-black"
+        android:maxLines="1"
+        android:textColor="@android:color/white"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_eta"
+        android:layout_width="72dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="82dp"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="2"
+        android:textColor="@android:color/white"
+        android:textSize="9sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_action_left"
+        android:layout_width="151dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/widget_figma_navy_button"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
+
+        <ImageView
+            android:id="@+id/widget_action_left_icon"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:src="@drawable/figma_widget_unknown_button_icon" />
+
+        <TextView
+            android:id="@+id/widget_action_left_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-bold"
+            android:maxLines="1"
+            android:text="@string/widget_open_app"
+            android:textColor="@android:color/white"
+            android:textSize="8sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_action_right"
+        android:layout_width="151dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/widget_figma_lime_button"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:src="@drawable/figma_widget_danger_button_icon" />
+
+        <TextView
+            android:id="@+id/widget_action_right_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:fontFamily="sans-serif-bold"
+            android:maxLines="1"
+            android:text="@string/widget_evacuation_guide"
+            android:textColor="@android:color/black"
+            android:textSize="8sp" />
+    </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

@@ -1,5 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Siaga Padang</string>
+    <string name="widget_description">Status zona, TES terdekat, dan akses cepat panduan evakuasi.</string>
+    <string name="widget_wide_name">Siaga Padang — 4 × 2</string>
+    <string name="widget_compact_name">Siaga Padang — 2 × 2</string>
+    <string name="widget_wide_description">Widget lebar 4 × 2 untuk status zona dan panduan evakuasi.</string>
+    <string name="widget_compact_description">Widget kotak 2 × 2 untuk status zona dan panduan evakuasi.</string>
+    <string name="widget_location_unreadable">Lokasi belum terbaca</string>
+    <string name="widget_reading_location">Membaca lokasi…</string>
+    <string name="widget_enable_location_permission">Aktifkan izin lokasi</string>
+    <string name="widget_enable_gps">Aktifkan GPS</string>
+    <string name="widget_zone_data_unavailable_short">Data zona belum tersedia</string>
+    <string name="widget_safe_title">Lokasi di luar zona rendaman</string>
+    <string name="widget_safe_detail">Berdasarkan data zona yang tersimpan</string>
+    <string name="widget_danger_title">Lokasi di zona rendaman</string>
+    <string name="widget_recorded_danger_zone">Zona rendaman tsunami terdata</string>
+    <string name="widget_route_unavailable_short">Rute belum tersedia</string>
+    <string name="widget_view_evacuation_guide">Lihat panduan evakuasi</string>
+    <string name="widget_evacuation_guide">Panduan evakuasi</string>
+    <string name="widget_open_app">Buka aplikasi</string>
+    <string name="widget_distance_meters">%1$d m</string>
+    <plurals name="widget_eta_minutes">
+        <item quantity="one">Jalan cepat ±%d menit</item>
+        <item quantity="other">Jalan cepat ±%d menit</item>
+    </plurals>
 </resources>
-

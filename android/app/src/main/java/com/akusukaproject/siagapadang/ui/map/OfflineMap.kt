@@ -23,7 +23,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
+import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
+import com.akusukaproject.siagapadang.data.model.TsunamiZoneOverlay
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
+import com.akusukaproject.siagapadang.domain.PolylineSimplifier
 import com.akusukaproject.siagapadang.R
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -34,19 +37,29 @@ import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
+import org.maplibre.android.style.layers.PropertyFactory.circleColor
+import org.maplibre.android.style.layers.PropertyFactory.circleOpacity
+import org.maplibre.android.style.layers.PropertyFactory.circleRadius
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -70,7 +83,7 @@ private const val DEVELOPMENT_MAP_STYLE = """
         {
           "id": "background",
           "type": "background",
-          "paint": { "background-color": "#071A20" }
+          "paint": { "background-color": "#D7D3BC" }
         },
         {
           "id": "openstreetmap",
@@ -89,7 +102,12 @@ private const val DEVELOPMENT_MAP_STYLE = """
 @Suppress("DEPRECATION")
 @Composable
 fun OfflineMap(
+    offlineRoadOverlay: OfflineRoadOverlay?,
+    isNetworkAvailable: Boolean?,
+    tsunamiZoneOverlay: TsunamiZoneOverlay?,
     routeCoordinates: List<GeoCoordinate>,
+    approachRouteCoordinates: List<GeoCoordinate>,
+    approachTargetLocation: GeoCoordinate?,
     previousRouteCoordinates: List<List<GeoCoordinate>>,
     currentLocation: GeoCoordinate?,
     destinationLocation: GeoCoordinate?,
@@ -99,19 +117,32 @@ fun OfflineMap(
     followUserLocation: Boolean,
     recenterRequest: Int,
     routeOverviewRequest: Int,
+    onViewportChanged: (GeoCoordinate) -> Unit,
     onUserMapGesture: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val latestRoute = rememberUpdatedState(routeCoordinates)
-    val latestPreviousRoutes = rememberUpdatedState(previousRouteCoordinates)
+    val displayRouteCoordinates = remember(routeCoordinates) {
+        PolylineSimplifier.simplify(routeCoordinates)
+    }
+    val displayPreviousRouteCoordinates = remember(previousRouteCoordinates) {
+        previousRouteCoordinates.map { coordinates -> PolylineSimplifier.simplify(coordinates) }
+    }
+    val latestRoute = rememberUpdatedState(displayRouteCoordinates)
+    val latestApproachRoute = rememberUpdatedState(approachRouteCoordinates)
+    val latestApproachTarget = rememberUpdatedState(approachTargetLocation)
+    val latestOfflineRoadOverlay = rememberUpdatedState(offlineRoadOverlay)
+    val latestNetworkAvailable = rememberUpdatedState(isNetworkAvailable)
+    val latestTsunamiZoneOverlay = rememberUpdatedState(tsunamiZoneOverlay)
+    val latestPreviousRoutes = rememberUpdatedState(displayPreviousRouteCoordinates)
     val latestLocation = rememberUpdatedState(currentLocation)
     val latestDestination = rememberUpdatedState(destinationLocation)
     val latestDestinationName = rememberUpdatedState(destinationName)
     val latestDestinationDistance = rememberUpdatedState(destinationDistanceLabel)
     val latestHeading = rememberUpdatedState(deviceHeadingDegrees)
     val latestFollowUser = rememberUpdatedState(followUserLocation)
+    val latestOnViewportChanged = rememberUpdatedState(onViewportChanged)
     val latestOnUserMapGesture = rememberUpdatedState(onUserMapGesture)
     val userMarkerBitmap = remember(context) { createUserMarkerBitmap(context) }
     val destinationAnnotationBitmap = remember(
@@ -168,10 +199,20 @@ fun OfflineMap(
                         latestOnUserMapGesture.value()
                     }
                 }
+                map.addOnCameraIdleListener {
+                    map.cameraPosition.target?.let { target ->
+                        latestOnViewportChanged.value(target.toGeoCoordinate())
+                    }
+                }
                 map.setStyle(Style.Builder().fromJson(DEVELOPMENT_MAP_STYLE)) { style ->
                     updateMapOverlays(
                         style = style,
+                        offlineRoadOverlay = latestOfflineRoadOverlay.value,
+                        isNetworkAvailable = latestNetworkAvailable.value,
+                        tsunamiZoneOverlay = latestTsunamiZoneOverlay.value,
                         routeCoordinates = latestRoute.value,
+                        approachRouteCoordinates = latestApproachRoute.value,
+                        approachTargetLocation = latestApproachTarget.value,
                         previousRouteCoordinates = latestPreviousRoutes.value,
                         currentLocation = latestLocation.value,
                         destinationLocation = latestDestination.value,
@@ -181,7 +222,11 @@ fun OfflineMap(
                             distanceLabel = latestDestinationDistance.value.orEmpty(),
                         ),
                         userMarkerBitmap = userMarkerBitmap,
+                        offlineRoadOverlayTracker = cameraTracker,
                     )
+                    map.cameraPosition.target?.let { target ->
+                        latestOnViewportChanged.value(target.toGeoCoordinate())
+                    }
                     if (latestFollowUser.value) latestLocation.value?.let { location ->
                         updateNavigationCamera(
                             map = map,
@@ -243,17 +288,23 @@ fun OfflineMap(
                 map.style?.let { style ->
                     updateMapOverlays(
                         style = style,
-                        routeCoordinates = routeCoordinates,
-                        previousRouteCoordinates = previousRouteCoordinates,
+                        offlineRoadOverlay = offlineRoadOverlay,
+                        isNetworkAvailable = isNetworkAvailable,
+                        tsunamiZoneOverlay = tsunamiZoneOverlay,
+                        routeCoordinates = displayRouteCoordinates,
+                        approachRouteCoordinates = approachRouteCoordinates,
+                        approachTargetLocation = approachTargetLocation,
+                        previousRouteCoordinates = displayPreviousRouteCoordinates,
                         currentLocation = currentLocation,
                         destinationLocation = destinationLocation,
                         destinationAnnotationBitmap = destinationAnnotationBitmap,
                         userMarkerBitmap = userMarkerBitmap,
+                        offlineRoadOverlayTracker = cameraTracker,
                     )
                 }
                 if (followUserLocation) currentLocation?.let { location ->
                     if (routeOverviewRequest != cameraTracker.routeOverviewRequest) {
-                        showRouteOverview(map, routeCoordinates, location)
+                        showRouteOverview(map, displayRouteCoordinates, location)
                         cameraTracker.isFollowing = false
                         cameraTracker.routeOverviewRequest = routeOverviewRequest
                     } else {
@@ -272,7 +323,7 @@ fun OfflineMap(
                 } else {
                     cameraTracker.isFollowing = false
                     if (routeOverviewRequest != cameraTracker.routeOverviewRequest) {
-                        showRouteOverview(map, routeCoordinates, currentLocation)
+                        showRouteOverview(map, displayRouteCoordinates, currentLocation)
                         cameraTracker.routeOverviewRequest = routeOverviewRequest
                     }
                 }
@@ -303,13 +354,23 @@ private fun showRouteOverview(
 
 private fun updateMapOverlays(
     style: Style,
+    offlineRoadOverlay: OfflineRoadOverlay?,
+    isNetworkAvailable: Boolean?,
+    tsunamiZoneOverlay: TsunamiZoneOverlay?,
     routeCoordinates: List<GeoCoordinate>,
+    approachRouteCoordinates: List<GeoCoordinate>,
+    approachTargetLocation: GeoCoordinate?,
     previousRouteCoordinates: List<List<GeoCoordinate>>,
     currentLocation: GeoCoordinate?,
     destinationLocation: GeoCoordinate?,
     destinationAnnotationBitmap: Bitmap,
     userMarkerBitmap: Bitmap,
+    offlineRoadOverlayTracker: CameraTracker,
 ) {
+    offlineRoadOverlay?.let { overlay ->
+        updateOfflineRoadOverlay(style, overlay, isNetworkAvailable, offlineRoadOverlayTracker)
+    }
+    tsunamiZoneOverlay?.let { overlay -> updateTsunamiZoneOverlays(style, overlay) }
     updatePreviousRouteOverlays(style, previousRouteCoordinates)
 
     if (routeCoordinates.size >= 2) {
@@ -339,6 +400,9 @@ private fun updateMapOverlays(
             existingRouteSource.setGeoJson(geometry)
         }
     }
+
+    updateApproachRouteOverlay(style, approachRouteCoordinates)
+    updateApproachTargetOverlay(style, approachTargetLocation)
 
     destinationLocation?.let { coordinate ->
         val feature = Feature.fromGeometry(
@@ -383,6 +447,189 @@ private fun updateMapOverlays(
         } else {
             existingLocationSource.setGeoJson(feature)
         }
+    }
+}
+
+private fun updateOfflineRoadOverlay(
+    style: Style,
+    overlay: OfflineRoadOverlay,
+    isNetworkAvailable: Boolean?,
+    tracker: CameraTracker,
+) {
+    val existingSource = style.getSource(OFFLINE_ROADS_SOURCE_ID) as? GeoJsonSource
+    if (existingSource == null) {
+        style.addSource(GeoJsonSource(OFFLINE_ROADS_SOURCE_ID, overlay.geoJson))
+        style.addLayer(
+            LineLayer(OFFLINE_ROADS_LAYER_ID, OFFLINE_ROADS_SOURCE_ID).withProperties(
+                lineColor("#173C49"),
+                lineWidth(2.1f),
+                lineCap(Property.LINE_CAP_ROUND),
+                lineJoin(Property.LINE_JOIN_ROUND),
+            ),
+        )
+        tracker.offlineRoadViewportId = overlay.viewportId
+    } else if (tracker.offlineRoadViewportId != overlay.viewportId) {
+        existingSource.setGeoJson(overlay.geoJson)
+        tracker.offlineRoadViewportId = overlay.viewportId
+    }
+
+    val roadOpacity = if (isNetworkAvailable == true) {
+        ONLINE_ROAD_OPACITY
+    } else {
+        OFFLINE_ROAD_OPACITY
+    }
+    style.getLayerAs<LineLayer>(OFFLINE_ROADS_LAYER_ID)?.setProperties(
+        lineOpacity(roadOpacity),
+    )
+}
+
+private fun LatLng.toGeoCoordinate() = GeoCoordinate(
+    latitude = latitude,
+    longitude = longitude,
+)
+
+private fun updateApproachRouteOverlay(
+    style: Style,
+    coordinates: List<GeoCoordinate>,
+) {
+    val featureCollection = if (coordinates.size >= 2) {
+        FeatureCollection.fromFeatures(
+            listOf(
+            Feature.fromGeometry(
+                LineString.fromLngLats(
+                    coordinates.map { coordinate ->
+                        Point.fromLngLat(coordinate.longitude, coordinate.latitude)
+                    },
+                ),
+            ),
+            ),
+        )
+    } else {
+        FeatureCollection.fromFeatures(emptyList<Feature>())
+    }
+    val existingSource = style.getSource(APPROACH_ROUTE_SOURCE_ID) as? GeoJsonSource
+    if (existingSource == null) {
+        style.addSource(GeoJsonSource(APPROACH_ROUTE_SOURCE_ID, featureCollection))
+        val layer = LineLayer(APPROACH_ROUTE_LAYER_ID, APPROACH_ROUTE_SOURCE_ID).withProperties(
+            lineColor("#FFF2D7"),
+            lineWidth(5f),
+            lineOpacity(0.96f),
+            lineDasharray(arrayOf(1.1f, 1.7f)),
+            lineCap(Property.LINE_CAP_ROUND),
+            lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        when {
+            style.getLayer(DESTINATION_LAYER_ID) != null ->
+                style.addLayerBelow(layer, DESTINATION_LAYER_ID)
+            style.getLayer(LOCATION_LAYER_ID) != null ->
+                style.addLayerBelow(layer, LOCATION_LAYER_ID)
+            else -> style.addLayer(layer)
+        }
+    } else {
+        existingSource.setGeoJson(featureCollection)
+    }
+}
+
+private fun updateApproachTargetOverlay(
+    style: Style,
+    coordinate: GeoCoordinate?,
+) {
+    val featureCollection = if (coordinate == null) {
+        FeatureCollection.fromFeatures(emptyList<Feature>())
+    } else {
+        FeatureCollection.fromFeatures(
+            listOf(
+                Feature.fromGeometry(
+                    Point.fromLngLat(coordinate.longitude, coordinate.latitude),
+                ),
+            ),
+        )
+    }
+    val existingSource = style.getSource(APPROACH_TARGET_SOURCE_ID) as? GeoJsonSource
+    if (existingSource == null) {
+        style.addSource(GeoJsonSource(APPROACH_TARGET_SOURCE_ID, featureCollection))
+        val layer = CircleLayer(APPROACH_TARGET_LAYER_ID, APPROACH_TARGET_SOURCE_ID).withProperties(
+            circleColor("#FFF2D7"),
+            circleRadius(8f),
+            circleOpacity(0.98f),
+            circleStrokeColor("#063A51"),
+            circleStrokeWidth(3f),
+        )
+        when {
+            style.getLayer(DESTINATION_LAYER_ID) != null ->
+                style.addLayerBelow(layer, DESTINATION_LAYER_ID)
+            style.getLayer(LOCATION_LAYER_ID) != null ->
+                style.addLayerBelow(layer, LOCATION_LAYER_ID)
+            else -> style.addLayer(layer)
+        }
+    } else {
+        existingSource.setGeoJson(featureCollection)
+    }
+}
+
+private fun updateTsunamiZoneOverlays(
+    style: Style,
+    overlay: TsunamiZoneOverlay,
+) {
+    ensureZoneLayer(
+        style = style,
+        sourceId = SAFE_ZONE_SOURCE_ID,
+        fillLayerId = SAFE_ZONE_FILL_LAYER_ID,
+        geoJson = overlay.safeGeoJson,
+        fill = SAFE_ZONE_FILL_COLOR,
+        opacity = SAFE_ZONE_OPACITY,
+    )
+    ensureZoneLayer(
+        style = style,
+        sourceId = LOW_RISK_ZONE_SOURCE_ID,
+        fillLayerId = LOW_RISK_ZONE_FILL_LAYER_ID,
+        geoJson = overlay.lowRiskGeoJson,
+        fill = LOW_RISK_ZONE_FILL_COLOR,
+        opacity = LOW_RISK_ZONE_OPACITY,
+    )
+    ensureZoneLayer(
+        style = style,
+        sourceId = MEDIUM_RISK_ZONE_SOURCE_ID,
+        fillLayerId = MEDIUM_RISK_ZONE_FILL_LAYER_ID,
+        geoJson = overlay.mediumRiskGeoJson,
+        fill = MEDIUM_RISK_ZONE_FILL_COLOR,
+        opacity = MEDIUM_RISK_ZONE_OPACITY,
+    )
+    ensureZoneLayer(
+        style = style,
+        sourceId = HIGH_RISK_ZONE_SOURCE_ID,
+        fillLayerId = HIGH_RISK_ZONE_FILL_LAYER_ID,
+        geoJson = overlay.highRiskGeoJson,
+        fill = HIGH_RISK_ZONE_FILL_COLOR,
+        opacity = HIGH_RISK_ZONE_OPACITY,
+    )
+}
+
+private fun ensureZoneLayer(
+    style: Style,
+    sourceId: String,
+    fillLayerId: String,
+    geoJson: String,
+    fill: String,
+    opacity: Float,
+) {
+    if (style.getSource(sourceId) != null) return
+
+    style.addSource(GeoJsonSource(sourceId, geoJson))
+    val fillLayer = FillLayer(fillLayerId, sourceId).withProperties(
+        fillColor(fill),
+        fillOpacity(opacity),
+    )
+    val navigationAnchor = listOf(
+        PREVIOUS_ROUTES_LAYER_ID,
+        ROUTE_LAYER_ID,
+        DESTINATION_LAYER_ID,
+        LOCATION_LAYER_ID,
+    ).firstOrNull { layerId -> style.getLayer(layerId) != null }
+    if (navigationAnchor == null) {
+        style.addLayer(fillLayer)
+    } else {
+        style.addLayerBelow(fillLayer, navigationAnchor)
     }
 }
 
@@ -571,6 +818,7 @@ private class CameraTracker {
     var isFollowing: Boolean = false
     var recenterRequest: Int = -1
     var routeOverviewRequest: Int = 0
+    var offlineRoadViewportId: String? = null
 }
 
 private class MapViewLifecycleController(
@@ -639,7 +887,15 @@ private const val USER_MARKER_OUTER_DP = 51f
 private const val USER_MARKER_LEAF_DP = 39f
 private const val USER_MARKER_BACKGROUND_ALPHA = 145
 private const val ROUTE_SOURCE_ID = "evacuation-route-source"
+private const val OFFLINE_ROADS_SOURCE_ID = "offline-roads-source"
+private const val OFFLINE_ROADS_LAYER_ID = "offline-roads-layer"
+private const val OFFLINE_ROAD_OPACITY = 0.78f
+private const val ONLINE_ROAD_OPACITY = 0.16f
 private const val ROUTE_LAYER_ID = "evacuation-route-layer"
+private const val APPROACH_ROUTE_SOURCE_ID = "approach-route-source"
+private const val APPROACH_ROUTE_LAYER_ID = "approach-route-layer"
+private const val APPROACH_TARGET_SOURCE_ID = "approach-target-source"
+private const val APPROACH_TARGET_LAYER_ID = "approach-target-layer"
 private const val PREVIOUS_ROUTES_SOURCE_ID = "previous-evacuation-routes-source"
 private const val PREVIOUS_ROUTES_LAYER_ID = "previous-evacuation-routes-layer"
 private const val LOCATION_SOURCE_ID = "user-location-source"
@@ -648,3 +904,19 @@ private const val USER_LOCATION_IMAGE_ID = "user-location-navigation-image"
 private const val DESTINATION_SOURCE_ID = "evacuation-destination-source"
 private const val DESTINATION_LAYER_ID = "evacuation-destination-layer"
 private const val DESTINATION_IMAGE_ID = "evacuation-destination-annotation-image"
+private const val SAFE_ZONE_SOURCE_ID = "tsunami-safe-zone-source"
+private const val SAFE_ZONE_FILL_LAYER_ID = "tsunami-safe-zone-fill-layer"
+private const val LOW_RISK_ZONE_SOURCE_ID = "tsunami-low-risk-zone-source"
+private const val LOW_RISK_ZONE_FILL_LAYER_ID = "tsunami-low-risk-zone-fill-layer"
+private const val MEDIUM_RISK_ZONE_SOURCE_ID = "tsunami-medium-risk-zone-source"
+private const val MEDIUM_RISK_ZONE_FILL_LAYER_ID = "tsunami-medium-risk-zone-fill-layer"
+private const val HIGH_RISK_ZONE_SOURCE_ID = "tsunami-high-risk-zone-source"
+private const val HIGH_RISK_ZONE_FILL_LAYER_ID = "tsunami-high-risk-zone-fill-layer"
+private const val SAFE_ZONE_FILL_COLOR = "#00D26A"
+private const val LOW_RISK_ZONE_FILL_COLOR = "#FFD400"
+private const val MEDIUM_RISK_ZONE_FILL_COLOR = "#FF6D00"
+private const val HIGH_RISK_ZONE_FILL_COLOR = "#FF1744"
+private const val SAFE_ZONE_OPACITY = 0.10f
+private const val LOW_RISK_ZONE_OPACITY = 0.12f
+private const val MEDIUM_RISK_ZONE_OPACITY = 0.14f
+private const val HIGH_RISK_ZONE_OPACITY = 0.16f

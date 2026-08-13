@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.Surface
 import android.view.WindowManager
+import com.akusukaproject.siagapadang.domain.HeadingSmoother
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -26,6 +27,7 @@ class CompassProvider(context: Context) {
         val rotationMatrix = FloatArray(9)
         val adjustedMatrix = FloatArray(9)
         val orientation = FloatArray(3)
+        val headingSmoother = HeadingSmoother()
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -33,7 +35,7 @@ class CompassProvider(context: Context) {
                 SensorManager.getOrientation(adjustedMatrix, orientation)
                 val heading = ((Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0)
                     .toFloat()
-                trySend(heading)
+                trySend(headingSmoother.update(heading))
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

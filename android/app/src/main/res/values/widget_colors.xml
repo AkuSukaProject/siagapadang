@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_figma_safe">#6AC6FF</color>
+    <color name="widget_figma_danger_start">#777944</color>
+    <color name="widget_figma_danger_end">#F6FF00</color>
+    <color name="widget_figma_unknown">#FFBA6A</color>
+    <color name="widget_figma_navy">#003049</color>
+    <color name="widget_figma_lime">#F7FF0C</color>
+    <color name="widget_figma_button_border">#8D8D8D</color>
+</resources>

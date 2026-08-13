@@ -6,6 +6,14 @@ data class NodeRow(
     @ColumnInfo(name = "node_id") val nodeId: Long,
     val lat: Double,
     val lon: Double,
+    @ColumnInfo(name = "is_safe") val isSafe: Int,
+)
+
+data class RoadSegmentRow(
+    @ColumnInfo(name = "from_lat") val fromLatitude: Double,
+    @ColumnInfo(name = "from_lon") val fromLongitude: Double,
+    @ColumnInfo(name = "to_lat") val toLatitude: Double,
+    @ColumnInfo(name = "to_lon") val toLongitude: Double,
 )
 
 data class RouteRow(
@@ -32,7 +40,21 @@ data class EdgeRow(
 data class TesRow(
     @ColumnInfo(name = "tes_id") val tesId: String,
     @ColumnInfo(name = "nama_tes") val name: String,
+    val zona: String,
+    val kapasitas: Double,
     val lat: Double,
     val lon: Double,
 )
 
+data class InundationZoneRow(
+    @ColumnInfo(name = "zone_id") val zoneId: Long,
+    @ColumnInfo(name = "nama_zona") val name: String,
+    @ColumnInfo(name = "tingkat_bahaya") val dangerLevel: String,
+    @ColumnInfo(name = "geometry_wkt") val geometryWkt: String,
+)
+
+data class ZoneGeometryRow(
+    val name: String,
+    val level: String,
+    @ColumnInfo(name = "geometry_wkt") val geometryWkt: String,
+)

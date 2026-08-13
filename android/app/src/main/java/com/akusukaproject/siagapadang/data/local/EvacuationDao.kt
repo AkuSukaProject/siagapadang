@@ -9,7 +9,7 @@ interface EvacuationDao {
     @SkipQueryVerification
     @Query(
         """
-        SELECT node_id, lat, lon
+        SELECT node_id, lat, lon, is_safe
         FROM tb_nodes
         WHERE lat BETWEEN :minLat AND :maxLat
           AND lon BETWEEN :minLon AND :maxLon
@@ -25,12 +25,36 @@ interface EvacuationDao {
     @SkipQueryVerification
     @Query(
         """
-        SELECT node_id, lat, lon
+        SELECT node_id, lat, lon, is_safe
         FROM tb_nodes
         WHERE node_id IN (:nodeIds)
         """,
     )
     suspend fun findNodesByIds(nodeIds: List<Long>): List<NodeRow>
+
+    @SkipQueryVerification
+    @Query(
+        """
+        SELECT DISTINCT
+               origin.lat AS from_lat,
+               origin.lon AS from_lon,
+               destination.lat AS to_lat,
+               destination.lon AS to_lon
+        FROM tb_edges AS edge
+        INNER JOIN tb_nodes AS origin ON origin.node_id = edge.u
+        INNER JOIN tb_nodes AS destination ON destination.node_id = edge.v
+        WHERE (origin.lat BETWEEN :minLat AND :maxLat
+               AND origin.lon BETWEEN :minLon AND :maxLon)
+           OR (destination.lat BETWEEN :minLat AND :maxLat
+               AND destination.lon BETWEEN :minLon AND :maxLon)
+        """,
+    )
+    suspend fun findRoadSegmentsInBounds(
+        minLat: Double,
+        maxLat: Double,
+        minLon: Double,
+        maxLon: Double,
+    ): List<RoadSegmentRow>
 
     @SkipQueryVerification
     @Query(
@@ -60,7 +84,7 @@ interface EvacuationDao {
     @SkipQueryVerification
     @Query(
         """
-        SELECT tes_id, nama_tes, lat, lon
+        SELECT tes_id, nama_tes, zona, kapasitas, lat, lon
         FROM tb_tes
         WHERE nama_tes = :name
         LIMIT 1

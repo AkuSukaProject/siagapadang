@@ -47,7 +47,7 @@ MapLibre adalah pustaka berbasis View. Bungkus dengan `AndroidView`, dan **pasti
 
 ## 3. Basis data — `ranah_siaga.db`
 
-**Ukuran 65,04 MB. Sudah jadi, jangan diubah.** Taruh di `app/src/main/assets/`, buka read-only lewat Room dengan `createFromAsset()`.
+**Ukuran 66,93 MiB (70.176.768 byte). Sudah jadi, jangan diubah.** Taruh di `android/app/src/main/assets/`, buka read-only lewat Room dengan `createFromAsset()`. Versi aktif memakai pendekatan hybrid zona aman: flag node untuk keputusan runtime dan poligon untuk visual/fallback.
 
 > ⚠️ File ini **tidak boleh di-commit ke Git**. Sudah masuk `.gitignore`. Distribusi lewat Google Drive atau GitHub Releases.
 
@@ -56,8 +56,9 @@ MapLibre adalah pustaka berbasis View. Bungkus dengan `AndroidView`, dan **pasti
 ```sql
 tb_nodes (
     node_id INTEGER PRIMARY KEY,   -- ID simpul OSM
-    lat REAL, lon REAL
-)                                   -- 31.813 baris
+    lat REAL, lon REAL,
+    is_safe INTEGER DEFAULT 0      -- 1 aman, 0 risiko
+)                                   -- 31.813 baris; 16.172 aman, 15.641 risiko
 
 tb_tes (
     tes_id TEXT PRIMARY KEY,        -- "TES_0", "TES_1", ...
@@ -85,13 +86,13 @@ tb_inundation_zones (
     zone_id INTEGER PRIMARY KEY,
     nama_zona TEXT, tingkat_bahaya TEXT,
     geometry_wkt TEXT               -- POLYGON
-)
+)                                   -- 73 poligon
 
 tb_safe_zones (
     safe_zone_id INTEGER PRIMARY KEY,
     nama_zona TEXT, elevasi_m REAL,
     geometry_wkt TEXT               -- POLYGON
-)
+)                                   -- 31 poligon
 ```
 
 ### Bentuk data yang perlu diperhatikan
