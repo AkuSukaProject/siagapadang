@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class BMKGStatusResponse(BaseModel):
@@ -15,3 +15,7 @@ class BMKGStatusResponse(BaseModel):
     dirasakan: Optional[str] = ""
     shakemap: Optional[str] = ""
     is_tsunami_potential: bool = False
+    source: str = Field(
+        default="BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)",
+        description="Atribusi sumber data resmi sesuai ketentuan lisensi BMKG"
+    )

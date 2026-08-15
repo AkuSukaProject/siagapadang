@@ -1,18 +1,24 @@
 import urllib.request
 import json
 import time
+from typing import TypedDict, Optional
 from fastapi import APIRouter
 from app.schemas.bmkg import BMKGStatusResponse
 
 router = APIRouter()
 
+class BMKGCache(TypedDict):
+    data: Optional[BMKGStatusResponse]
+    last_fetched: float
+
 # Simple In-Memory Cache (300 detik TTL)
-bmkg_cache = {
+bmkg_cache: BMKGCache = {
     "data": None,
-    "last_fetched": 0
+    "last_fetched": 0.0
 }
 
 BMKG_URL = "https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json"
+BMKG_ATTRIBUTION = "BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)"
 
 @router.get("", response_model=BMKGStatusResponse)
 def get_bmkg_status():
@@ -51,7 +57,8 @@ def get_bmkg_status():
                 potensi=str(gempa.get("Potensi") or ""),
                 dirasakan=str(gempa.get("Dirasakan") or ""),
                 shakemap=str(gempa.get("Shakemap") or ""),
-                is_tsunami_potential=is_tsunami
+                is_tsunami_potential=is_tsunami,
+                source=BMKG_ATTRIBUTION
             )
             
             # Update cache
@@ -78,5 +85,6 @@ def get_bmkg_status():
             potensi="TEST FIXTURE — BUKAN INFORMASI GEMPA AKTUAL",
             dirasakan="",
             shakemap="",
-            is_tsunami_potential=False
+            is_tsunami_potential=False,
+            source=BMKG_ATTRIBUTION
         )
