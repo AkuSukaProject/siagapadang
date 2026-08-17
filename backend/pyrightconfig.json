@@ -1,0 +1,15 @@
+{
+  "include": [
+    "app",
+    "alembic",
+    "scripts"
+  ],
+  "extraPaths": [
+    "."
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "warning",
+  "reportGeneralTypeIssues": "none",
+  "reportOptionalMemberAccess": "none"
+}

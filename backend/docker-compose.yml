@@ -1,0 +1,17 @@
+services:
+  db:
+    image: kartoza/postgis:15-3.4
+    container_name: postgis_evakuasi
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER belum diatur}
+      POSTGRES_PASS: ${POSTGRES_PASS:?POSTGRES_PASS belum diatur}
+      POSTGRES_DB: ${POSTGRES_DB:-evakuasi_padang}
+      ALLOW_IP_RANGE: ${ALLOW_IP_RANGE:-127.0.0.1/32}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql
+    restart: on-failure
+
+volumes:
+  postgis_data:

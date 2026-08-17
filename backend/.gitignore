@@ -1,0 +1,25 @@
+
+# Secrets and local environments
+.env
+.venv/
+venv/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime cache and local database artifacts
+cache/
+*.db
+*.sqlite
+
+# Experimental scripts
+scripts/download_jurnal.py
+scripts/generate_fixed_csv.py
+scripts/geocode_*.py
+scripts/gmaps_scraper.py
+scripts/read_excel*.py
+scripts/test_photon.py
