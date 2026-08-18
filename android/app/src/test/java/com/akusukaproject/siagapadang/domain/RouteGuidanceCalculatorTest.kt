@@ -112,6 +112,24 @@ class RouteGuidanceCalculatorTest {
     }
 
     @Test
+    fun `does not move route progress backwards on the same segment`() {
+        val guidance = RouteGuidanceCalculator.calculate(
+            currentLocation = coordinate(0.0002, 0.0),
+            routeCoordinates = listOf(
+                coordinate(0.0, 0.0),
+                coordinate(0.001, 0.0),
+                coordinate(0.002, 0.0),
+            ),
+            minimumRouteIndex = 0,
+            minimumSegmentFraction = 0.7,
+        )
+
+        assertEquals(0, guidance?.nearestRouteIndex)
+        assertEquals(0.7, guidance?.routeSegmentFraction ?: 0.0, 0.00001)
+        assertEquals(0.0007, guidance?.nearestRouteCoordinate?.latitude ?: 0.0, 0.00001)
+    }
+
+    @Test
     fun `reports distance from route for reliable deviation warning`() {
         val guidance = RouteGuidanceCalculator.calculate(
             currentLocation = coordinate(0.0, 0.001),

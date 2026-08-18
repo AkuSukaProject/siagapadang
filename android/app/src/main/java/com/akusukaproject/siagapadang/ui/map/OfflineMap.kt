@@ -373,13 +373,13 @@ private fun updateMapOverlays(
     tsunamiZoneOverlay?.let { overlay -> updateTsunamiZoneOverlays(style, overlay) }
     updatePreviousRouteOverlays(style, previousRouteCoordinates)
 
+    val existingRouteSource = style.getSource(ROUTE_SOURCE_ID) as? GeoJsonSource
     if (routeCoordinates.size >= 2) {
         val geometry = LineString.fromLngLats(
             routeCoordinates.map { coordinate ->
                 Point.fromLngLat(coordinate.longitude, coordinate.latitude)
             },
         )
-        val existingRouteSource = style.getSource(ROUTE_SOURCE_ID) as? GeoJsonSource
         if (existingRouteSource == null) {
             style.addSource(GeoJsonSource(ROUTE_SOURCE_ID, geometry))
             val routeLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
@@ -399,6 +399,8 @@ private fun updateMapOverlays(
         } else {
             existingRouteSource.setGeoJson(geometry)
         }
+    } else {
+        existingRouteSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
     }
 
     updateApproachRouteOverlay(style, approachRouteCoordinates)

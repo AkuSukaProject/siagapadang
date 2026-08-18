@@ -26,6 +26,7 @@ data class RouteGuidanceSnapshot(
     val instructions: List<ManeuverGuidance>,
     val remainingDistanceMeters: Int,
     val nearestRouteIndex: Int = 0,
+    val routeSegmentFraction: Double = 0.0,
     val distanceFromRouteMeters: Int = 0,
     val nearestRouteCoordinate: GeoCoordinate? = null,
     val isApproachingRoute: Boolean = false,
@@ -40,6 +41,7 @@ object RouteGuidanceCalculator {
         routeCoordinates: List<GeoCoordinate>,
         maxInstructions: Int = DEFAULT_MAX_INSTRUCTIONS,
         minimumRouteIndex: Int = 0,
+        minimumSegmentFraction: Double = 0.0,
         deviceHeadingDegrees: Float? = null,
     ): RouteGuidanceSnapshot? {
         if (routeCoordinates.isEmpty() || maxInstructions <= 0) return null
@@ -48,6 +50,7 @@ object RouteGuidanceCalculator {
             location = currentLocation,
             routeCoordinates = routeCoordinates,
             minimumRouteIndex = minimumRouteIndex,
+            minimumSegmentFraction = minimumSegmentFraction,
         ) ?: return null
         val nearestIndex = projection.segmentStartIndex
         val distanceFromRoute = projection.distanceMeters
@@ -67,6 +70,7 @@ object RouteGuidanceCalculator {
                 instructions = listOf(ManeuverGuidance(ManeuverType.ARRIVE, remainingDistance)),
                 remainingDistanceMeters = remainingDistance,
                 nearestRouteIndex = nearestIndex,
+                routeSegmentFraction = projection.segmentFraction,
                 distanceFromRouteMeters = distanceFromRoute,
                 nearestRouteCoordinate = projection.coordinate,
             )
@@ -140,6 +144,7 @@ object RouteGuidanceCalculator {
             instructions = instructions.take(maxInstructions),
             remainingDistanceMeters = remainingDistance,
             nearestRouteIndex = nearestIndex,
+            routeSegmentFraction = projection.segmentFraction,
             distanceFromRouteMeters = distanceFromRoute,
             nearestRouteCoordinate = projection.coordinate,
             isApproachingRoute = isApproachingRoute,

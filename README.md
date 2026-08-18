@@ -30,3 +30,15 @@ Ketiga area kode tidak saling mengimpor. Artefak penghubungnya adalah `ranah_sia
 Alur evaluasi utama adalah GPS → node terdekat → rute lokal → perakitan geometri → polyline → kompas → hitung mundur. Android hanya membaca hasil prakomputasi; aplikasi tidak menjalankan Dijkstra, A*, atau BFS.
 
 Lihat [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) sebelum membuat modul atau kelas baru.
+
+## Lisensi
+
+Kode sumber dilisensikan di bawah MIT License (lihat berkas [`LICENSE`](LICENSE)).
+
+Data jaringan jalan bersumber dari OpenStreetMap, dilisensikan di bawah
+Open Database License (ODbL). Atribusi peta: © OpenStreetMap contributors.
+Data titik evakuasi bersumber dari BPBD Kota Padang dan digunakan untuk
+keperluan akademik.
+
+Komponen pihak ketiga tetap mengikuti lisensi masing-masing. Salinan lisensi
+kode untuk paket penyerahan tersedia di [`deliverables/LICENSE`](deliverables/LICENSE).

@@ -4,6 +4,7 @@ kotlin = "2.3.21"
 composeBom = "2026.02.01"
 activityCompose = "1.12.4"
 lifecycle = "2.10.0"
+coreSplashscreen = "1.0.1"
 maplibre = "13.4.1"
 room = "2.8.4"
 playServicesLocation = "21.4.0"
@@ -14,6 +15,7 @@ junit = "4.13.2"
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }

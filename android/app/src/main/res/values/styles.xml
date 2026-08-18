@@ -8,4 +8,11 @@
         <item name="android:navigationBarColor">#003049</item>
         <item name="android:statusBarColor">#003049</item>
     </style>
+
+    <style name="Theme.SiagaPadang.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/siaga_padang_launcher_logo</item>
+        <item name="windowSplashScreenAnimationDuration">300</item>
+        <item name="postSplashScreenTheme">@style/Theme.SiagaPadang</item>
+    </style>
 </resources>

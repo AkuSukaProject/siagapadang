@@ -6,6 +6,7 @@ import kotlin.math.cos
 data class RouteProjection(
     val coordinate: GeoCoordinate,
     val segmentStartIndex: Int,
+    val segmentFraction: Double,
     val distanceMeters: Double,
 )
 
@@ -15,12 +16,14 @@ object RouteProjectionCalculator {
         location: GeoCoordinate,
         routeCoordinates: List<GeoCoordinate>,
         minimumRouteIndex: Int = 0,
+        minimumSegmentFraction: Double = 0.0,
     ): RouteProjection? {
         if (routeCoordinates.isEmpty()) return null
         if (routeCoordinates.size == 1) {
             return RouteProjection(
                 coordinate = routeCoordinates.first(),
                 segmentStartIndex = 0,
+                segmentFraction = 0.0,
                 distanceMeters = NearestNodeFinder.distanceMeters(location, routeCoordinates.first()),
             )
         }
@@ -29,6 +32,7 @@ object RouteProjectionCalculator {
             return RouteProjection(
                 coordinate = lastCoordinate,
                 segmentStartIndex = routeCoordinates.lastIndex,
+                segmentFraction = 1.0,
                 distanceMeters = NearestNodeFinder.distanceMeters(location, lastCoordinate),
             )
         }
@@ -41,11 +45,17 @@ object RouteProjectionCalculator {
                 location = location,
                 start = routeCoordinates[index],
                 end = routeCoordinates[index + 1],
+                minimumFraction = if (index == firstSegmentIndex) {
+                    minimumSegmentFraction.coerceIn(0.0, 1.0)
+                } else {
+                    0.0
+                },
             )
             val candidate = RouteProjection(
-                coordinate = projected,
+                coordinate = projected.coordinate,
                 segmentStartIndex = index,
-                distanceMeters = NearestNodeFinder.distanceMeters(location, projected),
+                segmentFraction = projected.fraction,
+                distanceMeters = NearestNodeFinder.distanceMeters(location, projected.coordinate),
             )
             if (bestProjection == null || candidate.distanceMeters < bestProjection.distanceMeters) {
                 bestProjection = candidate
@@ -58,7 +68,8 @@ object RouteProjectionCalculator {
         location: GeoCoordinate,
         start: GeoCoordinate,
         end: GeoCoordinate,
-    ): GeoCoordinate {
+        minimumFraction: Double,
+    ): SegmentProjection {
         val latitudeReferenceRadians = Math.toRadians(
             (location.latitude + start.latitude + end.latitude) / 3.0,
         )
@@ -72,12 +83,20 @@ object RouteProjectionCalculator {
             0.0
         } else {
             ((pointX * segmentX + pointY * segmentY) / segmentLengthSquared).coerceIn(0.0, 1.0)
-        }
-        return GeoCoordinate(
-            latitude = start.latitude + (end.latitude - start.latitude) * fraction,
-            longitude = start.longitude + (end.longitude - start.longitude) * fraction,
+        }.coerceAtLeast(minimumFraction)
+        return SegmentProjection(
+            coordinate = GeoCoordinate(
+                latitude = start.latitude + (end.latitude - start.latitude) * fraction,
+                longitude = start.longitude + (end.longitude - start.longitude) * fraction,
+            ),
+            fraction = fraction,
         )
     }
+
+    private data class SegmentProjection(
+        val coordinate: GeoCoordinate,
+        val fraction: Double,
+    )
 
     private const val METERS_PER_LATITUDE_DEGREE = 111_320.0
     private const val MIN_SEGMENT_LENGTH_SQUARED = 0.0001

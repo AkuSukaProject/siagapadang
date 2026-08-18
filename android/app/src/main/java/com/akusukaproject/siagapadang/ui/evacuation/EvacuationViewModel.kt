@@ -48,6 +48,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private var offlineRoadOverlayJob: Job? = null
     private var initialRouteRequested = false
     private var minimumRouteIndex = 0
+    private var minimumRouteSegmentFraction = 0.0
     private var announcedManeuverIndex: Int? = null
     private var lastZoneCheckLocation: GeoCoordinate? = null
     private var lastOfflineRoadCenter: GeoCoordinate? = null
@@ -380,10 +381,22 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             currentLocation = location,
             routeCoordinates = routeCoordinates,
             minimumRouteIndex = minimumRouteIndex,
+            minimumSegmentFraction = minimumRouteSegmentFraction,
             deviceHeadingDegrees = state.deviceHeadingDegrees,
         )
         guidance?.let { snapshot ->
-            minimumRouteIndex = maxOf(minimumRouteIndex, snapshot.nearestRouteIndex)
+            when {
+                snapshot.nearestRouteIndex > minimumRouteIndex -> {
+                    minimumRouteIndex = snapshot.nearestRouteIndex
+                    minimumRouteSegmentFraction = snapshot.routeSegmentFraction
+                }
+                snapshot.nearestRouteIndex == minimumRouteIndex -> {
+                    minimumRouteSegmentFraction = maxOf(
+                        minimumRouteSegmentFraction,
+                        snapshot.routeSegmentFraction,
+                    )
+                }
+            }
         }
         return state.copy(
             guidance = guidance,
@@ -436,6 +449,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun resetRouteProgress() {
         minimumRouteIndex = 0
+        minimumRouteSegmentFraction = 0.0
         announcedManeuverIndex = null
     }
 

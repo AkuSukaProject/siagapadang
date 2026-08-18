@@ -87,6 +87,7 @@ import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
+import com.akusukaproject.siagapadang.domain.RemainingRouteCalculator
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import com.akusukaproject.siagapadang.ui.map.OfflineMap
 import com.akusukaproject.siagapadang.ui.theme.SiagaCream
@@ -1031,11 +1032,23 @@ private fun EvacuationMapPanel(
     ) {
         val isApproachingRoute = state.guidance?.isApproachingRoute == true
         val nearestRouteCoordinate = state.guidance?.nearestRouteCoordinate
+        val routeCoordinates = state.route?.coordinates.orEmpty()
+        val remainingRouteCoordinates = remember(
+            routeCoordinates,
+            state.guidance?.nearestRouteIndex,
+            nearestRouteCoordinate,
+        ) {
+            RemainingRouteCalculator.calculate(
+                routeCoordinates = routeCoordinates,
+                nearestRouteIndex = state.guidance?.nearestRouteIndex,
+                nearestRouteCoordinate = nearestRouteCoordinate,
+            )
+        }
         OfflineMap(
             offlineRoadOverlay = state.offlineRoadOverlay,
             isNetworkAvailable = state.isNetworkAvailable,
             tsunamiZoneOverlay = state.tsunamiZoneOverlay,
-            routeCoordinates = state.route?.coordinates.orEmpty(),
+            routeCoordinates = remainingRouteCoordinates,
             approachRouteCoordinates = if (
                 isApproachingRoute && state.currentLocation != null && nearestRouteCoordinate != null
             ) {

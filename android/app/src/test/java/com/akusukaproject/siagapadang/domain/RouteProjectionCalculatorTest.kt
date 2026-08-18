@@ -38,6 +38,24 @@ class RouteProjectionCalculatorTest {
         assertEquals(2, projection?.segmentStartIndex)
     }
 
+    @Test
+    fun `does not move backwards within current segment after gps jitter`() {
+        val projection = RouteProjectionCalculator.findNearest(
+            location = coordinate(0.0002, 0.0),
+            routeCoordinates = listOf(
+                coordinate(0.0, 0.0),
+                coordinate(0.001, 0.0),
+                coordinate(0.002, 0.0),
+            ),
+            minimumRouteIndex = 0,
+            minimumSegmentFraction = 0.7,
+        )
+
+        assertEquals(0, projection?.segmentStartIndex)
+        assertEquals(0.7, projection?.segmentFraction ?: 0.0, 0.00001)
+        assertEquals(0.0007, projection?.coordinate?.latitude ?: 0.0, 0.00001)
+    }
+
     private fun coordinate(latitude: Double, longitude: Double) =
         GeoCoordinate(latitude = latitude, longitude = longitude)
 }
