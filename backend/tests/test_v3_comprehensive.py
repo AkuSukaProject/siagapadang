@@ -1,8 +1,11 @@
 import pytest
 import httpx
+import json
+from unittest.mock import patch
 from app.main import app
+from app.api.endpoints import bmkg
 from app.database import SessionLocal
-from app.models.domain import EmergencyEvent, EventStatus, EvacuationPoint, EvacuationPointType, StructuralCondition, OperationalStatus, DataVersion, Obstruction, ObstructionReport, Checkin
+from app.models.domain import EmergencyEvent, EventStatus, EvacuationPoint, EvacuationPointType, StructuralCondition, OperationalStatus, DataVersion, Obstruction, ObstructionReport, Checkin, ShelterOccupancyReport
 
 @pytest.fixture
 def anyio_backend():
@@ -12,6 +15,7 @@ def anyio_backend():
 def setup_db_fixtures():
     db = SessionLocal()
     # Clean up dependent tables first to avoid FK errors
+    db.query(ShelterOccupancyReport).delete()
     db.query(ObstructionReport).delete()
     db.query(Obstruction).delete()
     db.query(Checkin).delete()
@@ -81,6 +85,32 @@ async def test_checkin_required_external_ids():
         data = res.json()
         assert data["status"] == "success"
         assert data["evacuation_point_external_id"] == "TES-PADANG-01"
+
+
+@pytest.mark.anyio
+async def test_checkin_can_use_server_selected_active_event():
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/shelter/checkin",
+            json={
+                "evacuation_point_external_id": "TES-PADANG-01",
+                "latitude": -0.9511,
+                "longitude": 100.3538,
+                "accuracy_m": 10.0,
+            },
+            headers={"X-Device-ID": "DEVICE-SERVER-EVENT"},
+        )
+    assert res.status_code == 200
+    assert res.json()["event_external_id"] == "EVENT-PADANG-TEST-01"
+
+
+@pytest.mark.anyio
+async def test_active_event_status():
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/api/v1/status/emergency")
+    assert res.status_code == 200
+    assert res.json()["active"] is True
+    assert res.json()["event_external_id"] == "EVENT-PADANG-TEST-01"
 
 @pytest.mark.anyio
 async def test_checkin_accuracy_max_35m():
@@ -153,10 +183,92 @@ async def test_obstruction_report_3_uuids_transition():
         assert res3.json()["is_confirmed_blocked"] is True
 
 @pytest.mark.anyio
-async def test_bmkg_status_and_fixture_label():
-    """Endpoint BMKG mengembalikan status aktif atau label TEST FIXTURE jika fallback"""
+async def test_bmkg_status_uses_explicit_live_metadata():
+    """Endpoint BMKG memberi label sumber dan kesegaran data secara eksplisit."""
+    payload = {
+        "Infogempa": {
+            "gempa": {
+                "Tanggal": "13 Sep 2026",
+                "Jam": "10:00:00 WIB",
+                "DateTime": "2026-09-13T03:00:00+00:00",
+                "Coordinates": "-0.95,100.35",
+                "Lintang": "0.95 LS",
+                "Bujur": "100.35 BT",
+                "Magnitude": "5.2",
+                "Kedalaman": "10 km",
+                "Wilayah": "Pesisir Barat Sumatera",
+                "Potensi": "Tidak berpotensi tsunami",
+                "Dirasakan": "II Padang",
+            }
+        }
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    with patch("app.api.endpoints.bmkg.urllib.request.urlopen", return_value=FakeResponse()):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            res = await client.get("/api/v1/status/bmkg")
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["is_tsunami_potential"] is False
+    assert data["data_status"] == "live"
+    assert data["fetched_at"]
+    assert data["source"].startswith("BMKG")
+
+
+@pytest.mark.anyio
+async def test_occupancy_requires_checkin_and_returns_crowd_status():
+    headers = {"X-Device-ID": "DEVICE-OCCUPANCY-01"}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.get("/api/v1/status/bmkg")
-        assert res.status_code == 200
-        data = res.json()
-        assert "is_tsunami_potential" in data
+        denied = await client.post(
+            "/api/v1/shelter/occupancy",
+            json={"evacuation_point_external_id": "TES-PADANG-01", "level": "FULL"},
+            headers=headers,
+        )
+        assert denied.status_code == 403
+
+        checkin = await client.post(
+            "/api/v1/shelter/checkin",
+            json={
+                "evacuation_point_external_id": "TES-PADANG-01",
+                "latitude": -0.9511,
+                "longitude": 100.3538,
+                "accuracy_m": 10.0,
+            },
+            headers=headers,
+        )
+        assert checkin.status_code == 200
+
+        submitted = await client.post(
+            "/api/v1/shelter/occupancy",
+            json={"evacuation_point_external_id": "TES-PADANG-01", "level": "FULL"},
+            headers=headers,
+        )
+        assert submitted.status_code == 200
+        assert submitted.json()["level"] == "FULL"
+
+        status_response = await client.get("/api/v1/shelter/TES-PADANG-01/occupancy")
+        assert status_response.status_code == 200
+        assert status_response.json()["report_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_bmkg_unavailable_is_not_reported_as_live_data():
+    """Gangguan BMKG tanpa cache harus jujur menghasilkan status 503."""
+    bmkg.bmkg_cache["data"] = None
+    bmkg.bmkg_cache["last_fetched"] = 0.0
+    with patch("app.api.endpoints.bmkg.urllib.request.urlopen", side_effect=TimeoutError()):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            res = await client.get("/api/v1/status/bmkg")
+
+    assert res.status_code == 503
+    assert "tidak tersedia" in res.json()["detail"]

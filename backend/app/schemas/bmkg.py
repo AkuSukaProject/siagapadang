@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from datetime import datetime as DateTime
+from typing import Literal, Optional
 
 class BMKGStatusResponse(BaseModel):
     tanggal: str = ""
@@ -15,6 +16,13 @@ class BMKGStatusResponse(BaseModel):
     dirasakan: Optional[str] = ""
     shakemap: Optional[str] = ""
     is_tsunami_potential: bool = False
+    data_status: Literal["live", "stale"] = Field(
+        default="live",
+        description="Status kesegaran data: live atau stale",
+    )
+    fetched_at: DateTime = Field(
+        description="Waktu pengambilan data dari BMKG dalam format ISO 8601 UTC",
+    )
     source: str = Field(
         default="BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)",
         description="Atribusi sumber data resmi sesuai ketentuan lisensi BMKG"

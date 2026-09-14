@@ -181,3 +181,35 @@ class RouteEdge(Base):
     __table_args__ = (
         UniqueConstraint('dataset_version_id', 'edge_external_id', name='uq_dataset_edge'),
     )
+
+
+class OccupancyLevel(str, enum.Enum):
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    FULL = "FULL"
+
+
+class ShelterOccupancyReport(Base):
+    """Laporan keterisian dari perangkat yang sudah check-in di TES/TEA."""
+    __tablename__ = "shelter_occupancy_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("emergency_events.id"), nullable=False, index=True)
+    evacuation_point_id = Column(
+        BigInteger,
+        ForeignKey("evacuation_points.id"),
+        nullable=False,
+        index=True,
+    )
+    device_hash = Column(String, nullable=False, index=True)
+    level = Column(Enum(OccupancyLevel), nullable=False)
+    reported_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'event_id',
+            'evacuation_point_id',
+            'device_hash',
+            name='uq_occupancy_event_point_device',
+        ),
+    )

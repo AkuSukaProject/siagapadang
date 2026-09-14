@@ -1,1 +1,880 @@
-{"openapi": "3.1.0", "info": {"title": "API Evakuasi Tsunami Padang (Offline-First Backend)", "description": "Backend untuk sinkronisasi data prabencana dan simulasi bottleneck.", "version": "1.0.0"}, "paths": {"/api/v1/sync/check": {"get": {"tags": ["Synchronization"], "summary": "Check Updates", "description": "Endpoint untuk mendapatkan metadata versi terbaru dari semua dataset yang aktif.\nAndroid akan membandingkan daftar ini dengan versi lokal SQLite-nya.", "operationId": "check_updates_api_v1_sync_check_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SyncCheckResponse"}}}}}}}, "/api/v1/sync/shelters": {"get": {"tags": ["Synchronization"], "summary": "Get Sync Shelters", "description": "Mengunduh seluruh data shelter beserta metadata (elevasi, kapasitas, akses masuk) dalam format GeoJSON standar.", "operationId": "get_sync_shelters_api_v1_sync_shelters_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SyncDataResponse"}}}}}}}, "/api/v1/sync/network": {"get": {"tags": ["Synchronization"], "summary": "Get Sync Network", "description": "Endpoint placeholder untuk mengunduh patch/update graf (node/edge OSM) terbaru.", "operationId": "get_sync_network_api_v1_sync_network_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}}}}, "/api/v1/reports/obstruction": {"post": {"tags": ["Reports"], "summary": "Report Obstruction", "operationId": "report_obstruction_api_v1_reports_obstruction_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ObstructionReportCreate"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ObstructionReportResponse"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/v1/shelter/checkin": {"post": {"tags": ["Shelters"], "summary": "Shelter Checkin", "operationId": "shelter_checkin_api_v1_shelter_checkin_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckInRequest"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckInResponse"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/v1/status/bmkg": {"get": {"tags": ["BMKG"], "summary": "Get Bmkg Status", "operationId": "get_bmkg_status_api_v1_status_bmkg_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BMKGStatusResponse"}}}}}}}, "/": {"get": {"summary": "Read Root", "operationId": "read_root__get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}}}}, "/health/db": {"get": {"summary": "Health Check Db", "operationId": "health_check_db_health_db_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}}}}}, "components": {"schemas": {"BMKGStatusResponse": {"properties": {"tanggal": {"type": "string", "title": "Tanggal"}, "jam": {"type": "string", "title": "Jam"}, "datetime": {"type": "string", "title": "Datetime"}, "coordinates": {"type": "string", "title": "Coordinates"}, "lintang": {"type": "string", "title": "Lintang"}, "bujur": {"type": "string", "title": "Bujur"}, "magnitude": {"type": "string", "title": "Magnitude"}, "kedalaman": {"type": "string", "title": "Kedalaman"}, "wilayah": {"type": "string", "title": "Wilayah"}, "potensi": {"type": "string", "title": "Potensi"}, "dirasakan": {"type": "string", "title": "Dirasakan"}, "shakemap": {"type": "string", "title": "Shakemap"}, "is_tsunami_potential": {"type": "boolean", "title": "Is Tsunami Potential"}}, "type": "object", "required": ["tanggal", "jam", "datetime", "coordinates", "lintang", "bujur", "magnitude", "kedalaman", "wilayah", "potensi", "dirasakan", "shakemap", "is_tsunami_potential"], "title": "BMKGStatusResponse"}, "CheckInRequest": {"properties": {"external_id": {"type": "string", "title": "External Id", "description": "External ID TES/TEA"}, "latitude": {"type": "number", "title": "Latitude", "description": "Garis lintang lokasi pengguna"}, "longitude": {"type": "number", "title": "Longitude", "description": "Garis bujur lokasi pengguna"}, "accuracy_m": {"type": "number", "title": "Accuracy M", "description": "Akurasi koordinat pengguna dalam satuan meter"}, "status": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Status", "description": "Status pengguna", "default": "Selamat"}}, "type": "object", "required": ["external_id", "latitude", "longitude", "accuracy_m"], "title": "CheckInRequest"}, "CheckInResponse": {"properties": {"status": {"type": "string", "title": "Status"}, "message": {"type": "string", "title": "Message"}, "evacuation_point_external_id": {"type": "string", "title": "Evacuation Point External Id"}, "checked_in_at": {"type": "string", "format": "date-time", "title": "Checked In At"}}, "type": "object", "required": ["status", "message", "evacuation_point_external_id", "checked_in_at"], "title": "CheckInResponse"}, "DataVersionBase": {"properties": {"dataset_name": {"type": "string", "title": "Dataset Name"}, "version": {"type": "string", "title": "Version"}, "schema_version": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Schema Version"}, "checksum": {"type": "string", "title": "Checksum"}, "download_url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Download Url"}, "size_bytes": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Size Bytes"}, "minimum_app_version": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Minimum App Version"}, "published_at": {"type": "string", "format": "date-time", "title": "Published At"}, "is_active": {"type": "boolean", "title": "Is Active"}}, "type": "object", "required": ["dataset_name", "version", "checksum", "published_at", "is_active"], "title": "DataVersionBase"}, "HTTPValidationError": {"properties": {"detail": {"items": {"$ref": "#/components/schemas/ValidationError"}, "type": "array", "title": "Detail"}}, "type": "object", "title": "HTTPValidationError"}, "ObstructionReportCreate": {"properties": {"latitude": {"type": "number", "title": "Latitude", "description": "Garis lintang halangan (Y)"}, "longitude": {"type": "number", "title": "Longitude", "description": "Garis bujur halangan (X)"}, "dataset_version_id": {"type": "integer", "title": "Dataset Version Id", "description": "ID versi dataset graf rute yang digunakan Android saat ini"}, "edge_external_id": {"type": "string", "title": "Edge External Id", "description": "External ID ruas jalan"}, "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description", "description": "Opsional deskripsi halangan"}}, "type": "object", "required": ["latitude", "longitude", "dataset_version_id", "edge_external_id"], "title": "ObstructionReportCreate"}, "ObstructionReportResponse": {"properties": {"status": {"type": "string", "title": "Status"}, "message": {"type": "string", "title": "Message"}, "obstruction_id": {"type": "integer", "title": "Obstruction Id"}, "is_confirmed_blocked": {"type": "boolean", "title": "Is Confirmed Blocked"}}, "type": "object", "required": ["status", "message", "obstruction_id", "is_confirmed_blocked"], "title": "ObstructionReportResponse"}, "SyncCheckResponse": {"properties": {"has_update": {"type": "boolean", "title": "Has Update"}, "latest_versions": {"items": {"$ref": "#/components/schemas/DataVersionBase"}, "type": "array", "title": "Latest Versions"}, "message": {"type": "string", "title": "Message"}}, "type": "object", "required": ["has_update", "latest_versions", "message"], "title": "SyncCheckResponse"}, "SyncDataResponse": {"properties": {"dataset_name": {"type": "string", "title": "Dataset Name"}, "version": {"type": "string", "title": "Version"}, "checksum": {"type": "string", "title": "Checksum"}, "data": {"additionalProperties": true, "type": "object", "title": "Data"}}, "type": "object", "required": ["dataset_name", "version", "checksum", "data"], "title": "SyncDataResponse"}, "ValidationError": {"properties": {"loc": {"items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}, "type": "array", "title": "Location"}, "msg": {"type": "string", "title": "Message"}, "type": {"type": "string", "title": "Error Type"}}, "type": "object", "required": ["loc", "msg", "type"], "title": "ValidationError"}}}}
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API Evakuasi Tsunami Padang (Offline-First Backend)",
+    "description": "Backend untuk sinkronisasi data prabencana dan simulasi bottleneck.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/sync/check": {
+      "get": {
+        "tags": [
+          "Synchronization"
+        ],
+        "summary": "Check Updates",
+        "description": "Endpoint untuk mendapatkan metadata versi terbaru dari semua dataset yang aktif.\nAndroid akan membandingkan daftar ini dengan versi lokal SQLite-nya.",
+        "operationId": "check_updates_api_v1_sync_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/shelters": {
+      "get": {
+        "tags": [
+          "Synchronization"
+        ],
+        "summary": "Get Sync Shelters",
+        "description": "Mengunduh seluruh data shelter beserta metadata (elevasi, kapasitas, akses masuk) dalam format GeoJSON standar.",
+        "operationId": "get_sync_shelters_api_v1_sync_shelters_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncDataResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/network": {
+      "get": {
+        "tags": [
+          "Synchronization"
+        ],
+        "summary": "Get Sync Network",
+        "description": "Endpoint placeholder untuk mengunduh patch/update graf (node/edge OSM) terbaru.",
+        "operationId": "get_sync_network_api_v1_sync_network_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/obstruction": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Report Obstruction",
+        "operationId": "report_obstruction_api_v1_reports_obstruction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObstructionReportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObstructionReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shelter/checkin": {
+      "post": {
+        "tags": [
+          "Shelters"
+        ],
+        "summary": "Shelter Checkin",
+        "operationId": "shelter_checkin_api_v1_shelter_checkin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shelter/occupancy": {
+      "post": {
+        "tags": [
+          "Shelters"
+        ],
+        "summary": "Report Occupancy",
+        "operationId": "report_occupancy_api_v1_shelter_occupancy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OccupancyReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OccupancyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shelter/{external_id}/occupancy": {
+      "get": {
+        "tags": [
+          "Shelters"
+        ],
+        "summary": "Get Occupancy Status",
+        "operationId": "get_occupancy_status_api_v1_shelter__external_id__occupancy_get",
+        "parameters": [
+          {
+            "name": "external_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "External Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OccupancyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status/bmkg": {
+      "get": {
+        "tags": [
+          "BMKG"
+        ],
+        "summary": "Get Bmkg Status",
+        "operationId": "get_bmkg_status_api_v1_status_bmkg_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BMKGStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status/emergency": {
+      "get": {
+        "tags": [
+          "Emergency status"
+        ],
+        "summary": "Get Active Event",
+        "operationId": "get_active_event_api_v1_status_emergency_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveEventResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Read Root",
+        "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/db": {
+      "get": {
+        "summary": "Health Check Db",
+        "operationId": "health_check_db_health_db_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActiveEventResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "event_external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event External Id"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active"
+        ],
+        "title": "ActiveEventResponse"
+      },
+      "BMKGStatusResponse": {
+        "properties": {
+          "tanggal": {
+            "type": "string",
+            "title": "Tanggal",
+            "default": ""
+          },
+          "jam": {
+            "type": "string",
+            "title": "Jam",
+            "default": ""
+          },
+          "datetime": {
+            "type": "string",
+            "title": "Datetime",
+            "default": ""
+          },
+          "coordinates": {
+            "type": "string",
+            "title": "Coordinates",
+            "default": ""
+          },
+          "lintang": {
+            "type": "string",
+            "title": "Lintang",
+            "default": ""
+          },
+          "bujur": {
+            "type": "string",
+            "title": "Bujur",
+            "default": ""
+          },
+          "magnitude": {
+            "type": "string",
+            "title": "Magnitude",
+            "default": ""
+          },
+          "kedalaman": {
+            "type": "string",
+            "title": "Kedalaman",
+            "default": ""
+          },
+          "wilayah": {
+            "type": "string",
+            "title": "Wilayah",
+            "default": ""
+          },
+          "potensi": {
+            "type": "string",
+            "title": "Potensi",
+            "default": ""
+          },
+          "dirasakan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dirasakan",
+            "default": ""
+          },
+          "shakemap": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shakemap",
+            "default": ""
+          },
+          "is_tsunami_potential": {
+            "type": "boolean",
+            "title": "Is Tsunami Potential",
+            "default": false
+          },
+          "data_status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "stale"
+            ],
+            "title": "Data Status",
+            "description": "Status kesegaran data: live atau stale",
+            "default": "live"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At",
+            "description": "Waktu pengambilan data dari BMKG dalam format ISO 8601 UTC"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Atribusi sumber data resmi sesuai ketentuan lisensi BMKG",
+            "default": "BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fetched_at"
+        ],
+        "title": "BMKGStatusResponse"
+      },
+      "CheckInRequest": {
+        "properties": {
+          "event_external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event External Id",
+            "description": "External ID kejadian; kosong berarti event aktif terbaru"
+          },
+          "evacuation_point_external_id": {
+            "type": "string",
+            "title": "Evacuation Point External Id",
+            "description": "External ID Tempat Evakuasi (TES/TEA)"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude",
+            "description": "Garis lintang lokasi pengguna"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude",
+            "description": "Garis bujur lokasi pengguna"
+          },
+          "accuracy_m": {
+            "type": "number",
+            "title": "Accuracy M",
+            "description": "Akurasi GPS (maksimal 35m)"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "Status keselamatan pengguna",
+            "default": "Selamat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evacuation_point_external_id",
+          "latitude",
+          "longitude",
+          "accuracy_m"
+        ],
+        "title": "CheckInRequest"
+      },
+      "CheckInResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "event_external_id": {
+            "type": "string",
+            "title": "Event External Id"
+          },
+          "evacuation_point_external_id": {
+            "type": "string",
+            "title": "Evacuation Point External Id"
+          },
+          "checked_in_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked In At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "event_external_id",
+          "evacuation_point_external_id",
+          "checked_in_at"
+        ],
+        "title": "CheckInResponse"
+      },
+      "DataVersionBase": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "dataset_name": {
+            "type": "string",
+            "title": "Dataset Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "checksum": {
+            "type": "string",
+            "title": "Checksum"
+          },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "minimum_app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum App Version"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "dataset_name",
+          "version",
+          "checksum",
+          "published_at",
+          "is_active"
+        ],
+        "title": "DataVersionBase"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ObstructionReportCreate": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude",
+            "description": "Garis lintang halangan (Y)"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude",
+            "description": "Garis bujur halangan (X)"
+          },
+          "dataset_version_id": {
+            "type": "integer",
+            "title": "Dataset Version Id",
+            "description": "ID versi dataset graf rute yang digunakan Android saat ini"
+          },
+          "edge_external_id": {
+            "type": "string",
+            "title": "Edge External Id",
+            "description": "External ID ruas jalan"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Opsional deskripsi halangan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "dataset_version_id",
+          "edge_external_id"
+        ],
+        "title": "ObstructionReportCreate"
+      },
+      "ObstructionReportResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "obstruction_id": {
+            "type": "integer",
+            "title": "Obstruction Id"
+          },
+          "is_confirmed_blocked": {
+            "type": "boolean",
+            "title": "Is Confirmed Blocked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "obstruction_id",
+          "is_confirmed_blocked"
+        ],
+        "title": "ObstructionReportResponse"
+      },
+      "OccupancyReportRequest": {
+        "properties": {
+          "evacuation_point_external_id": {
+            "type": "string",
+            "title": "Evacuation Point External Id"
+          },
+          "level": {
+            "type": "string",
+            "pattern": "^(LOW|MODERATE|FULL)$",
+            "title": "Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evacuation_point_external_id",
+          "level"
+        ],
+        "title": "OccupancyReportRequest"
+      },
+      "OccupancyStatusResponse": {
+        "properties": {
+          "evacuation_point_external_id": {
+            "type": "string",
+            "title": "Evacuation Point External Id"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "report_count": {
+            "type": "integer",
+            "title": "Report Count"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "Laporan pengguna yang sudah check-in"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evacuation_point_external_id",
+          "level",
+          "report_count"
+        ],
+        "title": "OccupancyStatusResponse"
+      },
+      "SyncCheckResponse": {
+        "properties": {
+          "has_update": {
+            "type": "boolean",
+            "title": "Has Update"
+          },
+          "latest_versions": {
+            "items": {
+              "$ref": "#/components/schemas/DataVersionBase"
+            },
+            "type": "array",
+            "title": "Latest Versions"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_update",
+          "latest_versions",
+          "message"
+        ],
+        "title": "SyncCheckResponse"
+      },
+      "SyncDataResponse": {
+        "properties": {
+          "dataset_name": {
+            "type": "string",
+            "title": "Dataset Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "checksum": {
+            "type": "string",
+            "title": "Checksum"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset_name",
+          "version",
+          "checksum",
+          "data"
+        ],
+        "title": "SyncDataResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

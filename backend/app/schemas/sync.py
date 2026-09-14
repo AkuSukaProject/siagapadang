@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 class DataVersionBase(BaseModel):
+    id: int
     dataset_name: str
     version: str
     schema_version: Optional[str] = None
