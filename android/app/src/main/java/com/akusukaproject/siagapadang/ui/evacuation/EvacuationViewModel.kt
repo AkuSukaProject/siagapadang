@@ -96,9 +96,13 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     mutableUiState.update { state -> state.copy(isNetworkAvailable = false) }
                 }
                 .collect { isAvailable ->
+                    val shouldLoadBmkg = isAvailable &&
+                        mutableUiState.value.bmkgStatus == null &&
+                        !mutableUiState.value.isLoadingBmkgStatus
                     mutableUiState.update { state ->
                         state.copy(isNetworkAvailable = isAvailable)
                     }
+                    if (shouldLoadBmkg) refreshBmkgStatus()
                 }
         }
     }
@@ -137,6 +141,34 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     fun retryRoute() {
         initialRouteRequested = false
         mutableUiState.value.currentLocation?.let(::requestInitialRoute)
+    }
+
+    fun refreshBmkgStatus() {
+        if (mutableUiState.value.isLoadingBmkgStatus) return
+        viewModelScope.launch {
+            mutableUiState.update {
+                it.copy(isLoadingBmkgStatus = true, bmkgErrorMessage = null)
+            }
+            runCatching { app.bmkgApiClient.getLatestStatus() }
+                .onSuccess { status ->
+                    mutableUiState.update {
+                        it.copy(
+                            bmkgStatus = status,
+                            isLoadingBmkgStatus = false,
+                            bmkgErrorMessage = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Status BMKG tidak dapat dimuat", error)
+                    mutableUiState.update {
+                        it.copy(
+                            isLoadingBmkgStatus = false,
+                            bmkgErrorMessage = "Informasi BMKG belum dapat diambil.",
+                        )
+                    }
+                }
+        }
     }
 
     fun selectAlternativeDestination() {

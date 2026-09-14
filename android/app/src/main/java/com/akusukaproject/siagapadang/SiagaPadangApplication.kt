@@ -3,6 +3,7 @@ package com.akusukaproject.siagapadang
 import android.app.Application
 import android.util.Log
 import com.akusukaproject.siagapadang.data.local.SiagaPadangDatabase
+import com.akusukaproject.siagapadang.data.remote.BmkgApiClient
 import com.akusukaproject.siagapadang.data.repository.EvacuationRepository
 import com.akusukaproject.siagapadang.data.repository.ZoneRepository
 import com.akusukaproject.siagapadang.sensor.CompassProvider
@@ -18,6 +19,7 @@ class SiagaPadangApplication : Application() {
     val locationProvider by lazy { LocationProvider(this) }
     val compassProvider by lazy { CompassProvider(this) }
     val networkStatusProvider by lazy { NetworkStatusProvider(this) }
+    val bmkgApiClient by lazy { BmkgApiClient(BuildConfig.BACKEND_BASE_URL) }
 
     override fun onCreate() {
         super.onCreate()

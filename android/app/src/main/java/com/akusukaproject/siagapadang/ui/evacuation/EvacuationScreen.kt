@@ -82,6 +82,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.akusukaproject.siagapadang.R
+import com.akusukaproject.siagapadang.data.model.BmkgStatus
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
@@ -144,6 +145,7 @@ fun EvacuationScreen(
         evidenceDestinationCapacity = evidenceDestinationCapacity,
         onRequestLocationPermission = ::requestLocationPermission,
         onRetryRoute = viewModel::retryRoute,
+        onRefreshBmkgStatus = viewModel::refreshBmkgStatus,
         onSelectAlternative = viewModel::selectAlternativeDestination,
         onMapViewportChanged = viewModel::onMapViewportChanged,
     )
@@ -157,6 +159,7 @@ private fun EvacuationContent(
     evidenceDestinationCapacity: Int?,
     onRequestLocationPermission: () -> Unit,
     onRetryRoute: () -> Unit,
+    onRefreshBmkgStatus: () -> Unit,
     onSelectAlternative: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
 ) {
@@ -165,6 +168,7 @@ private fun EvacuationContent(
         mutableStateOf(showArrivalEvidence)
     }
     var selectedStatusDetail by rememberSaveable { mutableStateOf<StatusDetailType?>(null) }
+    var acknowledgedBmkgAlertId by rememberSaveable { mutableStateOf<String?>(null) }
     val mapPanelState = remember { AnchoredDraggableState(MapPanelValue.COLLAPSED) }
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -274,6 +278,7 @@ private fun EvacuationContent(
                 detail = detail,
                 state = state,
                 onDismiss = { selectedStatusDetail = null },
+                onRefreshBmkgStatus = onRefreshBmkgStatus,
                 scale = scale,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -359,6 +364,94 @@ private fun EvacuationContent(
             onAcknowledge = { showArrivalDialog = false },
         )
     }
+
+    state.bmkgStatus
+        ?.takeIf { it.hasTsunamiPotential && !it.isStale }
+        ?.takeIf { it.fetchedAt != acknowledgedBmkgAlertId }
+        ?.let { status ->
+            BmkgTsunamiAlertDialog(
+                status = status,
+                onContinueEvacuation = { acknowledgedBmkgAlertId = status.fetchedAt },
+            )
+        }
+}
+
+@Composable
+private fun BmkgTsunamiAlertDialog(
+    status: BmkgStatus,
+    onContinueEvacuation: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(
+            color = STATUS_ERROR_COLOR,
+            contentColor = SiagaNavy,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp, vertical = 56.dp),
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    BmkgStatusIcon(color = SiagaNavy, modifier = Modifier.size(96.dp))
+                    Text(
+                        text = "PERINGATAN TSUNAMI BMKG",
+                        fontSize = 30.sp,
+                        lineHeight = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = status.potential.ifBlank { "BMKG menyatakan ada potensi tsunami." },
+                        fontSize = 22.sp,
+                        lineHeight = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "${status.eventDate} ${status.eventTime}\n${status.region}".trim(),
+                        fontSize = 18.sp,
+                        lineHeight = 25.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "Evakuasi segera. Ikuti rute pada aplikasi dan arahan petugas di lapangan.",
+                        fontSize = 18.sp,
+                        lineHeight = 25.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Button(
+                    onClick = onContinueEvacuation,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SiagaNavy,
+                        contentColor = SiagaCream,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(58.dp),
+                ) {
+                    Text("Lanjutkan evakuasi", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -371,6 +464,7 @@ private fun StatusIconRow(
 ) {
     val gpsColor = gpsStatusColor(state)
     val networkColor = networkStatusColor(state.isNetworkAvailable)
+    val bmkgColor = bmkgStatusColor(state)
     Row(
         horizontalArrangement = Arrangement.spacedBy((1f * scale).dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -401,6 +495,18 @@ private fun StatusIconRow(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        StatusIconButton(
+            color = bmkgColor,
+            selected = selected == StatusDetailType.BMKG,
+            showProblemBadge = state.bmkgErrorMessage != null ||
+                state.bmkgStatus?.isStale == true ||
+                state.bmkgStatus?.hasTsunamiPotential == true,
+            contentDescription = "Lihat informasi BMKG",
+            scale = scale,
+            onClick = { onSelect(StatusDetailType.BMKG) },
+        ) {
+            BmkgStatusIcon(color = bmkgColor, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -414,6 +520,7 @@ private fun StatusIconColumn(
 ) {
     val gpsColor = gpsStatusColor(state)
     val networkColor = networkStatusColor(state.isNetworkAvailable)
+    val bmkgColor = bmkgStatusColor(state)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy((1f * scale).dp),
@@ -442,6 +549,19 @@ private fun StatusIconColumn(
             onClick = { onSelect(StatusDetailType.NETWORK) },
         ) {
             NetworkStatusIcon(color = networkColor, modifier = Modifier.fillMaxSize())
+        }
+        StatusIconButton(
+            color = bmkgColor,
+            selected = selected == StatusDetailType.BMKG,
+            showProblemBadge = state.bmkgErrorMessage != null ||
+                state.bmkgStatus?.isStale == true ||
+                state.bmkgStatus?.hasTsunamiPotential == true,
+            contentDescription = "Lihat informasi BMKG",
+            scale = scale,
+            buttonSizeDp = 40f,
+            onClick = { onSelect(StatusDetailType.BMKG) },
+        ) {
+            BmkgStatusIcon(color = bmkgColor, modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -562,10 +682,37 @@ private fun NetworkStatusIcon(
 }
 
 @Composable
+private fun BmkgStatusIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.minDimension * 0.10f
+        val triangle = Path().apply {
+            moveTo(size.width / 2f, size.height * 0.08f)
+            lineTo(size.width * 0.92f, size.height * 0.86f)
+            lineTo(size.width * 0.08f, size.height * 0.86f)
+            close()
+        }
+        drawPath(triangle, color = color, style = Stroke(strokeWidth, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        drawLine(
+            color = color,
+            start = Offset(size.width / 2f, size.height * 0.36f),
+            end = Offset(size.width / 2f, size.height * 0.61f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+        drawCircle(
+            color = color,
+            radius = strokeWidth * 0.55f,
+            center = Offset(size.width / 2f, size.height * 0.73f),
+        )
+    }
+}
+
+@Composable
 private fun StatusDetailCard(
     detail: StatusDetailType,
     state: EvacuationUiState,
     onDismiss: () -> Unit,
+    onRefreshBmkgStatus: () -> Unit,
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
@@ -590,6 +737,30 @@ private fun StatusDetailCard(
                 null -> "Aplikasi sedang memeriksa koneksi perangkat."
             }
             color = networkStatusColor(state.isNetworkAvailable)
+        }
+        StatusDetailType.BMKG -> {
+            val bmkg = state.bmkgStatus
+            title = when {
+                state.isLoadingBmkgStatus -> "Memuat informasi BMKG"
+                bmkg?.isStale == true -> "Data BMKG tersimpan"
+                bmkg != null -> "Informasi gempa terbaru"
+                else -> "Informasi BMKG belum tersedia"
+            }
+            message = when {
+                state.isLoadingBmkgStatus -> "Aplikasi sedang menghubungi backend Siaga Padang."
+                state.bmkgErrorMessage != null ->
+                    "${state.bmkgErrorMessage} Navigasi luring tetap dapat digunakan."
+                bmkg != null -> buildString {
+                    append(listOf(bmkg.eventDate, bmkg.eventTime).filter { it.isNotBlank() }.joinToString(" • "))
+                    if (bmkg.magnitude.isNotBlank()) append("\nMagnitudo ${bmkg.magnitude}")
+                    if (bmkg.depth.isNotBlank()) append(" • Kedalaman ${bmkg.depth}")
+                    if (bmkg.region.isNotBlank()) append("\n${bmkg.region}")
+                    if (bmkg.potential.isNotBlank()) append("\n${bmkg.potential}")
+                    append("\nSumber: ${bmkg.source}")
+                }
+                else -> "Hubungkan perangkat ke jaringan untuk mengambil informasi resmi terbaru."
+            }
+            color = bmkgStatusColor(state)
         }
     }
     Surface(
@@ -622,6 +793,22 @@ private fun StatusDetailCard(
                     fontSize = (11f * scale).sp,
                     lineHeight = (15f * scale).sp,
                 )
+                if (detail == StatusDetailType.BMKG) {
+                    OutlinedButton(
+                        onClick = onRefreshBmkgStatus,
+                        enabled = !state.isLoadingBmkgStatus,
+                    ) {
+                        if (state.isLoadingBmkgStatus) {
+                            CircularProgressIndicator(
+                                color = SiagaNavy,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size((16f * scale).dp),
+                            )
+                        } else {
+                            Text("Muat ulang", color = SiagaNavy)
+                        }
+                    }
+                }
             }
             IconButton(
                 onClick = onDismiss,
@@ -2485,6 +2672,14 @@ private fun networkStatusColor(isAvailable: Boolean?): Color = when (isAvailable
     null -> STATUS_UNKNOWN_COLOR
 }
 
+private fun bmkgStatusColor(state: EvacuationUiState): Color = when {
+    state.bmkgErrorMessage != null -> STATUS_ERROR_COLOR
+    state.bmkgStatus?.hasTsunamiPotential == true -> STATUS_ERROR_COLOR
+    state.bmkgStatus?.isStale == true -> STATUS_CAUTION_COLOR
+    state.bmkgStatus != null -> BMKG_INFO_COLOR
+    else -> STATUS_UNKNOWN_COLOR
+}
+
 private fun zoneStatusColor(status: InundationZoneStatus?): Color = when (status) {
     InundationZoneStatus.OutsideRecordedZone -> SiagaCream
     is InundationZoneStatus.InsideRecordedZone -> SiagaRust
@@ -2504,6 +2699,7 @@ private fun zoneLegendDisplayColor(baseColor: Color, mapOpacity: Float): Color {
 private enum class StatusDetailType {
     GPS,
     NETWORK,
+    BMKG,
 }
 
 private enum class MapPanelValue {
@@ -2539,3 +2735,4 @@ private const val ZONE_HIGH_MAP_OPACITY = 0.16f
 private val STATUS_CAUTION_COLOR = Color(0xFFFFD166)
 private val STATUS_ERROR_COLOR = Color(0xFFFF6B6B)
 private val STATUS_UNKNOWN_COLOR = Color(0xFFB9C4C9)
+private val BMKG_INFO_COLOR = Color(0xFF28AEFF)

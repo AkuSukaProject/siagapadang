@@ -22,7 +22,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            val backendUrl = providers.gradleProperty("SIAGA_BACKEND_BASE_URL")
+                .orElse("http://127.0.0.1:8000/")
+                .get()
+            buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
+            val backendUrl = providers.gradleProperty("SIAGA_BACKEND_BASE_URL")
+                .orElse("")
+                .get()
+            buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

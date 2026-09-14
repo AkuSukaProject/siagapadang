@@ -383,7 +383,7 @@ private fun updateMapOverlays(
         if (existingRouteSource == null) {
             style.addSource(GeoJsonSource(ROUTE_SOURCE_ID, geometry))
             val routeLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-                lineColor("#7A7FFF"),
+                lineColor("#007BFA"),
                 lineWidth(7f),
                 lineOpacity(0.96f),
                 lineCap(Property.LINE_CAP_ROUND),
