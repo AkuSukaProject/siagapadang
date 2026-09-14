@@ -1,4 +1,20 @@
 
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# Pytest / Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Experimental Scripts
 scripts/download_jurnal.py
 scripts/generate_fixed_csv.py

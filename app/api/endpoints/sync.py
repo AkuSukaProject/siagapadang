@@ -19,7 +19,7 @@ def check_updates(db: Session = Depends(get_db)):
     subquery = db.query(
         DataVersion.dataset_name, 
         func.max(DataVersion.id).label('max_id')
-    ).filter(DataVersion.is_active == True).group_by(DataVersion.dataset_name).subquery()
+    ).filter(DataVersion.is_active.is_(True)).group_by(DataVersion.dataset_name).subquery()
     
     latest_versions = db.query(DataVersion).join(
         subquery, 
@@ -37,7 +37,10 @@ def get_sync_shelters(db: Session = Depends(get_db)):
     """
     Mengunduh seluruh data shelter beserta metadata (elevasi, kapasitas, akses masuk) dalam format GeoJSON standar.
     """
-    latest_shelter = db.query(DataVersion).filter_by(dataset_name="shelters", is_active=True).order_by(DataVersion.id.desc()).first()
+    latest_shelter = db.query(DataVersion).filter(
+        DataVersion.dataset_name == "shelters",
+        DataVersion.is_active.is_(True)
+    ).order_by(DataVersion.id.desc()).first()
     if not latest_shelter:
         raise HTTPException(status_code=404, detail="No shelter data version available.")
         

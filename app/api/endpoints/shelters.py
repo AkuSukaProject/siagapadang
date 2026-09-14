@@ -75,14 +75,14 @@ def shelter_checkin(
     if checkin:
         # Perpindahan TES atau update status
         checkin.evacuation_point_id = point.id
-        checkin.status = request.status
+        checkin.status = request.status or "Selamat"
         checkin.checked_in_at = datetime.now(pytz.utc)
     else:
         checkin = Checkin(
             event_id=active_event.id,
             device_hash=device_hash,
             evacuation_point_id=point.id,
-            status=request.status,
+            status=request.status or "Selamat",
             checked_in_at=datetime.now(pytz.utc)
         )
         db.add(checkin)
@@ -93,6 +93,6 @@ def shelter_checkin(
     return CheckInResponse(
         status="success",
         message="Berhasil lapor selamat! Tetap tenang dan tunggu arahan petugas.",
-        evacuation_point_external_id=point.external_id,
+        evacuation_point_external_id=str(point.external_id),
         checked_in_at=checkin.checked_in_at
     )
