@@ -34,6 +34,10 @@ app.include_router(events.router, prefix="/api/v1/status/emergency", tags=["Emer
 def read_root():
     return {"message": "Sistem Evakuasi Tsunami Padang API Aktif!"}
 
+@app.get("/health")
+def liveness_check():
+    return {"status": "ok"}
+
 @app.get("/health/db")
 def health_check_db(db: Session = Depends(get_db)):
     try:

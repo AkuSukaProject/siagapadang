@@ -31,10 +31,12 @@ android {
         }
         release {
             val backendUrl = providers.gradleProperty("SIAGA_BACKEND_BASE_URL")
-                .orElse("")
+                .orElse(providers.environmentVariable("SIAGA_BACKEND_BASE_URL"))
+                .orElse("https://siagapadang.id/")
                 .get()
+            val usesCleartext = backendUrl.startsWith("http://")
             buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
-            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            manifestPlaceholders["usesCleartextTraffic"] = if (usesCleartext) "true" else "false"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
