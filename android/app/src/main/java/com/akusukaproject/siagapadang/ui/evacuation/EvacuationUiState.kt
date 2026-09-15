@@ -2,8 +2,10 @@ package com.akusukaproject.siagapadang.ui.evacuation
 
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.BmkgStatus
+import com.akusukaproject.siagapadang.data.model.DatasetUpdateStatus
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
+import com.akusukaproject.siagapadang.data.model.LocalDatasetManifest
 import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
 import com.akusukaproject.siagapadang.data.model.TsunamiZoneOverlay
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
@@ -17,6 +19,10 @@ data class EvacuationUiState(
     val bmkgStatus: BmkgStatus? = null,
     val isLoadingBmkgStatus: Boolean = false,
     val bmkgErrorMessage: String? = null,
+    val localDatasetManifest: LocalDatasetManifest? = null,
+    val datasetUpdateStatus: DatasetUpdateStatus? = null,
+    val isCheckingDataUpdate: Boolean = false,
+    val dataUpdateErrorMessage: String? = null,
     val route: EvacuationRoute? = null,
     val previousRoutes: List<EvacuationRoute> = emptyList(),
     val offlineRoadOverlay: OfflineRoadOverlay? = null,

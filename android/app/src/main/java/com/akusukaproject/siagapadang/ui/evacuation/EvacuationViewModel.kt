@@ -61,6 +61,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         loadTsunamiZoneOverlay()
+        loadLocalDatasetManifest()
         monitorNetworkStatus()
         startCountdown()
     }
@@ -165,6 +166,53 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                         it.copy(
                             isLoadingBmkgStatus = false,
                             bmkgErrorMessage = "Informasi BMKG belum dapat diambil.",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun loadLocalDatasetManifest() {
+        viewModelScope.launch {
+            runCatching { app.dataUpdateApiClient.loadLocalManifest() }
+                .onSuccess { manifest ->
+                    mutableUiState.update { state ->
+                        state.copy(localDatasetManifest = manifest)
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Manifest dataset lokal tidak dapat dibaca", error)
+                }
+        }
+    }
+
+    fun checkDataUpdates() {
+        if (mutableUiState.value.isCheckingDataUpdate) return
+        viewModelScope.launch {
+            mutableUiState.update { state ->
+                state.copy(
+                    isCheckingDataUpdate = true,
+                    dataUpdateErrorMessage = null,
+                )
+            }
+            runCatching { app.dataUpdateApiClient.checkForUpdates() }
+                .onSuccess { status ->
+                    mutableUiState.update { state ->
+                        state.copy(
+                            localDatasetManifest = status.local,
+                            datasetUpdateStatus = status,
+                            isCheckingDataUpdate = false,
+                            dataUpdateErrorMessage = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Pembaruan dataset tidak dapat diperiksa", error)
+                    mutableUiState.update { state ->
+                        state.copy(
+                            isCheckingDataUpdate = false,
+                            dataUpdateErrorMessage =
+                                "Versi terbaru belum dapat diperiksa. Data lokal tetap dapat digunakan.",
                         )
                     }
                 }

@@ -98,6 +98,9 @@ import com.akusukaproject.siagapadang.ui.theme.SiagaRust
 import com.akusukaproject.siagapadang.ui.theme.SiagaWarning
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
@@ -146,6 +149,7 @@ fun EvacuationScreen(
         onRequestLocationPermission = ::requestLocationPermission,
         onRetryRoute = viewModel::retryRoute,
         onRefreshBmkgStatus = viewModel::refreshBmkgStatus,
+        onCheckDataUpdates = viewModel::checkDataUpdates,
         onSelectAlternative = viewModel::selectAlternativeDestination,
         onMapViewportChanged = viewModel::onMapViewportChanged,
     )
@@ -160,6 +164,7 @@ private fun EvacuationContent(
     onRequestLocationPermission: () -> Unit,
     onRetryRoute: () -> Unit,
     onRefreshBmkgStatus: () -> Unit,
+    onCheckDataUpdates: () -> Unit,
     onSelectAlternative: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
 ) {
@@ -168,6 +173,7 @@ private fun EvacuationContent(
         mutableStateOf(showArrivalEvidence)
     }
     var selectedStatusDetail by rememberSaveable { mutableStateOf<StatusDetailType?>(null) }
+    var showDataUpdateDialog by rememberSaveable { mutableStateOf(false) }
     var acknowledgedBmkgAlertId by rememberSaveable { mutableStateOf<String?>(null) }
     val mapPanelState = remember { AnchoredDraggableState(MapPanelValue.COLLAPSED) }
     val coroutineScope = rememberCoroutineScope()
@@ -273,6 +279,18 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         }
+        DataUpdateShortcut(
+            isChecking = state.isCheckingDataUpdate,
+            onClick = {
+                showDataUpdateDialog = true
+                onCheckDataUpdates()
+            },
+            scale = scale,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = scaled(12f), top = scaled(4f))
+                .zIndex(30f),
+        )
         selectedStatusDetail?.let { detail ->
             StatusDetailCard(
                 detail = detail,
@@ -365,6 +383,14 @@ private fun EvacuationContent(
         )
     }
 
+    if (showDataUpdateDialog) {
+        DataUpdateDialog(
+            state = state,
+            onDismiss = { showDataUpdateDialog = false },
+            onCheckUpdates = onCheckDataUpdates,
+        )
+    }
+
     state.bmkgStatus
         ?.takeIf { it.hasTsunamiPotential && !it.isStale }
         ?.takeIf { it.fetchedAt != acknowledgedBmkgAlertId }
@@ -375,6 +401,237 @@ private fun EvacuationContent(
             )
         }
 }
+
+@Composable
+private fun DataUpdateShortcut(
+    isChecking: Boolean,
+    onClick: () -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaCream,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((11f * scale).dp),
+        border = BorderStroke(1.dp, SiagaNextGreen),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Buka pembaruan data" },
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy((6f * scale).dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(
+                horizontal = (11f * scale).dp,
+                vertical = (8f * scale).dp,
+            ),
+        ) {
+            if (isChecking) {
+                CircularProgressIndicator(
+                    color = SiagaNavy,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size((14f * scale).dp),
+                )
+            } else {
+                Text(
+                    text = "↻",
+                    fontSize = (16f * scale).sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Text(
+                text = "DATA",
+                fontSize = (10f * scale).sp,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DataUpdateDialog(
+    state: EvacuationUiState,
+    onDismiss: () -> Unit,
+    onCheckUpdates: () -> Unit,
+) {
+    val local = state.localDatasetManifest
+    val update = state.datasetUpdateStatus
+    val statusColor = when {
+        state.dataUpdateErrorMessage != null -> STATUS_ERROR_COLOR
+        update?.updateAvailable == true -> SiagaWarning
+        update != null -> SiagaNextGreen
+        else -> SiagaNavy.copy(alpha = 0.14f)
+    }
+    val statusTitle = when {
+        state.isCheckingDataUpdate -> "Memeriksa versi terbaru…"
+        state.dataUpdateErrorMessage != null -> "Pemeriksaan belum berhasil"
+        update?.updateAvailable == true -> "Pembaruan tersedia"
+        update != null -> "Data sudah terbaru"
+        else -> "Belum diperiksa"
+    }
+    val statusMessage = when {
+        state.isCheckingDataUpdate -> "Menghubungi backend SIAGA PADANG."
+        state.dataUpdateErrorMessage != null -> state.dataUpdateErrorMessage
+        update?.updateAvailable == true ->
+            "Versi ${update.latestVersionLabel} tersedia. Data lokal tetap digunakan sampai pembaruan diterapkan."
+        update != null -> "Versi perangkat sesuai dengan versi aktif di server."
+        else -> "Periksa saat internet tersedia sebelum keadaan darurat."
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            color = SiagaCream,
+            contentColor = SiagaNavy,
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(2.dp, SiagaNextGreen),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(22.dp),
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(end = 44.dp),
+                    ) {
+                        Text(
+                            text = "Pembaruan Data",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(
+                            text = "Data evakuasi tersimpan di perangkat",
+                            color = SiagaNavy.copy(alpha = 0.68f),
+                            fontSize = 13.sp,
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(44.dp),
+                    ) {
+                        Text("×", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Surface(
+                    color = Color.White.copy(alpha = 0.72f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, SiagaNavy.copy(alpha = 0.16f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(15.dp),
+                    ) {
+                        DatasetInfoRow("Versi di perangkat", local?.version ?: "Membaca data…")
+                        DatasetInfoRow(
+                            "Versi di server",
+                            update?.latestVersionLabel ?: "Belum diperiksa",
+                        )
+                        DatasetInfoRow(
+                            "Ukuran data lokal",
+                            local?.sizeBytes?.let(::formatDatasetSize) ?: "—",
+                        )
+                        DatasetInfoRow(
+                            "Terakhir diperiksa",
+                            update?.checkedAtMillis?.let(::formatDatasetCheckTime) ?: "Belum pernah",
+                        )
+                    }
+                }
+
+                Surface(
+                    color = statusColor.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, statusColor),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(14.dp),
+                    ) {
+                        Text(statusTitle, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            statusMessage,
+                            color = SiagaNavy.copy(alpha = 0.78f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onCheckUpdates,
+                    enabled = !state.isCheckingDataUpdate,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SiagaNavy,
+                        contentColor = SiagaCream,
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    if (state.isCheckingDataUpdate) {
+                        CircularProgressIndicator(
+                            color = SiagaCream,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    } else {
+                        Text("Periksa pembaruan", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Text(
+                    text = "Jika pemeriksaan gagal, navigasi tetap memakai data lokal yang tersedia.",
+                    color = SiagaNavy.copy(alpha = 0.62f),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DatasetInfoRow(label: String, value: String) {
+    Row(
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = label,
+            color = SiagaNavy.copy(alpha = 0.66f),
+            fontSize = 12.sp,
+        )
+        Text(
+            text = value,
+            color = SiagaNavy,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+        )
+    }
+}
+
+private fun formatDatasetSize(sizeBytes: Long): String =
+    String.format(Locale.forLanguageTag("id-ID"), "%.1f MB", sizeBytes / 1_000_000.0)
+
+private fun formatDatasetCheckTime(timestamp: Long): String =
+    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.forLanguageTag("id-ID")).format(Date(timestamp))
 
 @Composable
 private fun BmkgTsunamiAlertDialog(
