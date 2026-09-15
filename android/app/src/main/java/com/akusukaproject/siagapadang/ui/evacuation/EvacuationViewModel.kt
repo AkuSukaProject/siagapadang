@@ -14,6 +14,7 @@ import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
+import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
 import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
 import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
@@ -255,6 +256,9 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             ),
                             hasArrived = false,
                             arrivalDistanceMeters = null,
+                            checkinStatus = CheckinStatus.IDLE,
+                            checkinMessage = null,
+                            checkedInAt = null,
                         ),
                     )
                 }
@@ -266,6 +270,89 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             }
+        }
+    }
+
+    fun performShelterCheckin() {
+        val currentState = mutableUiState.value
+        if (!currentState.hasArrived || currentState.isCheckingIn) return
+
+        val tesId = currentState.destinationExternalId
+        if (tesId.isNullOrBlank()) {
+            mutableUiState.update {
+                it.copy(
+                    checkinStatus = CheckinStatus.FAILED,
+                    checkinMessage = "ID tempat evakuasi tidak tersedia pada rute.",
+                )
+            }
+            return
+        }
+
+        val location = currentState.currentLocation
+        if (location == null) {
+            mutableUiState.update {
+                it.copy(
+                    checkinStatus = CheckinStatus.FAILED,
+                    checkinMessage = "Lokasi GPS belum tersedia untuk lapor selamat.",
+                )
+            }
+            return
+        }
+
+        val accuracy = currentState.locationAccuracyMeters ?: 50f
+        if (accuracy > MAX_CHECKIN_ACCURACY_METERS) {
+            mutableUiState.update {
+                it.copy(
+                    checkinStatus = CheckinStatus.FAILED,
+                    checkinMessage = "Akurasi GPS (${accuracy.roundToInt()}m) melebihi batas maksimal 35m. Tunggu sinyal GPS membaik.",
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            mutableUiState.update {
+                it.copy(
+                    checkinStatus = CheckinStatus.CHECKING_IN,
+                    checkinMessage = "Menghubungi posko bencana...",
+                )
+            }
+
+            val request = ShelterCheckinRequestDto(
+                evacuationPointExternalId = tesId,
+                latitude = location.latitude,
+                longitude = location.longitude,
+                accuracyMeters = accuracy,
+                status = "Selamat",
+            )
+
+            val result = app.emergencyApiClient.checkIn(request)
+            result.onSuccess { response ->
+                mutableUiState.update {
+                    it.copy(
+                        checkinStatus = CheckinStatus.SUCCESS,
+                        checkinMessage = response.message.ifBlank { "Lapor selamat berhasil dicatat posko." },
+                        checkedInAt = response.checkedInAt,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        checkinStatus = CheckinStatus.FAILED,
+                        checkinMessage = error.message ?: "Gagal terhubung ke posko bencana.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun resetCheckinStatus() {
+        mutableUiState.update {
+            it.copy(
+                checkinStatus = CheckinStatus.IDLE,
+                checkinMessage = null,
+                checkedInAt = null,
+            )
         }
     }
 
@@ -345,6 +432,9 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             hasArrived = false,
                             arrivalDistanceMeters = null,
                             errorMessage = null,
+                            checkinStatus = CheckinStatus.IDLE,
+                            checkinMessage = null,
+                            checkedInAt = null,
                         ),
                     )
                 }
@@ -597,12 +687,13 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         Log.i(LOG_TAG, "Arahan siap dalam $elapsedMillis ms")
     }
 
-    private companion object {
-        const val LOG_TAG = "EvacuationTiming"
-        const val MANEUVER_ALERT_DISTANCE_METERS = 30
-        const val MIN_ZONE_CHECK_MOVEMENT_METERS = 12.0
-        const val REQUIRED_ZONE_TRANSITION_CONFIRMATIONS = 2
-        const val ROAD_VIEWPORT_RELOAD_METERS = 500.0
-        const val ROAD_VIEWPORT_DEBOUNCE_MILLIS = 120L
+    companion object {
+        private const val LOG_TAG = "EvacuationTiming"
+        private const val MANEUVER_ALERT_DISTANCE_METERS = 30
+        private const val MIN_ZONE_CHECK_MOVEMENT_METERS = 12.0
+        private const val REQUIRED_ZONE_TRANSITION_CONFIRMATIONS = 2
+        private const val ROAD_VIEWPORT_RELOAD_METERS = 500.0
+        private const val ROAD_VIEWPORT_DEBOUNCE_MILLIS = 120L
+        const val MAX_CHECKIN_ACCURACY_METERS = 35f
     }
 }

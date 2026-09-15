@@ -152,6 +152,7 @@ fun EvacuationScreen(
         onCheckDataUpdates = viewModel::checkDataUpdates,
         onSelectAlternative = viewModel::selectAlternativeDestination,
         onMapViewportChanged = viewModel::onMapViewportChanged,
+        onPerformCheckin = viewModel::performShelterCheckin,
     )
 }
 
@@ -167,6 +168,7 @@ private fun EvacuationContent(
     onCheckDataUpdates: () -> Unit,
     onSelectAlternative: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
+    onPerformCheckin: () -> Unit,
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
@@ -379,6 +381,10 @@ private fun EvacuationContent(
             } else {
                 state.route?.destinationCapacityPeople
             },
+            checkinStatus = state.checkinStatus,
+            checkinMessage = state.checkinMessage,
+            checkedInAt = state.checkedInAt,
+            onPerformCheckin = onPerformCheckin,
             onAcknowledge = { showArrivalDialog = false },
         )
     }
@@ -2661,6 +2667,10 @@ private fun BlockedRouteDialog(
 private fun ArrivalDialog(
     destinationName: String,
     destinationCapacityPeople: Int?,
+    checkinStatus: CheckinStatus = CheckinStatus.IDLE,
+    checkinMessage: String? = null,
+    checkedInAt: String? = null,
+    onPerformCheckin: () -> Unit = {},
     onAcknowledge: () -> Unit,
 ) {
     Dialog(
@@ -2749,7 +2759,144 @@ private fun ArrivalDialog(
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    color = when (checkinStatus) {
+                        CheckinStatus.SUCCESS -> SiagaNextGreen.copy(alpha = 0.15f)
+                        CheckinStatus.FAILED -> SiagaRust.copy(alpha = 0.12f)
+                        else -> Color.White.copy(alpha = 0.7f)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        when (checkinStatus) {
+                            CheckinStatus.SUCCESS -> SiagaNextGreen
+                            CheckinStatus.FAILED -> SiagaRust
+                            else -> SiagaNavy.copy(alpha = 0.2f)
+                        },
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        when (checkinStatus) {
+                            CheckinStatus.IDLE -> {
+                                Text(
+                                    text = "Lapor Kehadiran ke Posko Bencana",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SiagaNavy,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Jika ada koneksi seluler/internet, laporkan kehadiran agar terdata selamat oleh BPBD.",
+                                    fontSize = 11.sp,
+                                    color = SiagaNavy.copy(alpha = 0.75f),
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = onPerformCheckin,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = SiagaNavy,
+                                        contentColor = SiagaCream,
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(42.dp),
+                                ) {
+                                    Text(
+                                        text = "Lapor Tiba & Selamat (Check-in)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                            CheckinStatus.CHECKING_IN -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = SiagaNavy,
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Menghubungi posko bencana...",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = SiagaNavy,
+                                    )
+                                }
+                            }
+                            CheckinStatus.SUCCESS -> {
+                                Text(
+                                    text = "✅ Terdata Selamat di Posko",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F5132),
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = checkinMessage ?: "Kehadiran Anda berhasil dicatat di sistem posko.",
+                                    fontSize = 12.sp,
+                                    color = SiagaNavy.copy(alpha = 0.85f),
+                                    textAlign = TextAlign.Center,
+                                )
+                                checkedInAt?.let { timestamp ->
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Waktu: $timestamp",
+                                        fontSize = 11.sp,
+                                        color = SiagaNavy.copy(alpha = 0.65f),
+                                    )
+                                }
+                            }
+                            CheckinStatus.FAILED -> {
+                                Text(
+                                    text = "⚠️ Belum Berhasil Terhubung ke Posko",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SiagaRust,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = checkinMessage ?: "Gagal mengirim data keselamatan ke server posko.",
+                                    fontSize = 11.sp,
+                                    color = SiagaNavy.copy(alpha = 0.8f),
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = onPerformCheckin,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = SiagaRust,
+                                        contentColor = Color.White,
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(42.dp),
+                                ) {
+                                    Text(
+                                        text = "Coba Kirim Ulang",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = onAcknowledge,
                     colors = ButtonDefaults.buttonColors(

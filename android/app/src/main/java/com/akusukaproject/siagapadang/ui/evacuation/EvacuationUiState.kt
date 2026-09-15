@@ -41,7 +41,13 @@ data class EvacuationUiState(
     val errorMessage: String? = null,
     val compassMessage: String? = null,
     val activeEdgeId: Long? = null,
+    val checkinStatus: CheckinStatus = CheckinStatus.IDLE,
+    val checkinMessage: String? = null,
+    val checkedInAt: String? = null,
 ) {
+    val isCheckingIn: Boolean
+        get() = checkinStatus == CheckinStatus.CHECKING_IN
+
     val destinationExternalId: String?
         get() = route?.destinationExternalId
 
@@ -70,4 +76,11 @@ enum class LocationQuality {
     GOOD,
     FAIR,
     WEAK,
+}
+
+enum class CheckinStatus {
+    IDLE,
+    CHECKING_IN,
+    SUCCESS,
+    FAILED,
 }
