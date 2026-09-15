@@ -14,7 +14,9 @@ import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
+import com.akusukaproject.siagapadang.data.remote.model.ObstructionReportRequestDto
 import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
+import kotlinx.coroutines.Dispatchers
 import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
 import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
@@ -106,6 +108,10 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                         state.copy(isNetworkAvailable = isAvailable)
                     }
                     if (shouldLoadBmkg) refreshBmkgStatus()
+                    if (isAvailable) {
+                        flushPendingObstructionReports()
+                        refreshConfirmedObstructions()
+                    }
                 }
         }
     }
@@ -227,6 +233,13 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         val currentLocation = currentState.currentLocation ?: return
         if (!currentState.canSelectAlternative || routeJob?.isActive == true) return
 
+        val blockedEdgeId = currentState.activeEdgeId
+        val updatedBlockedEdgeIds = if (blockedEdgeId != null) {
+            currentState.blockedEdgeIds + blockedEdgeId
+        } else {
+            currentState.blockedEdgeIds
+        }
+
         routeJob = viewModelScope.launch {
             mutableUiState.update { it.copy(isLoadingRoute = true, errorMessage = null) }
             runCatching {
@@ -234,6 +247,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     location = currentLocation,
                     currentRoute = currentRoute,
                     excludedDestinationNames = rejectedDestinationNames,
+                    excludedEdgeIds = updatedBlockedEdgeIds + currentState.confirmedBlockedEdgeIds,
                 )
             }.onSuccess { route ->
                 rejectedDestinationNames += currentRoute.destinationName
@@ -259,8 +273,27 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             checkinStatus = CheckinStatus.IDLE,
                             checkinMessage = null,
                             checkedInAt = null,
+                            blockedEdgeIds = updatedBlockedEdgeIds,
                         ),
                     )
+                }
+
+                if (blockedEdgeId != null) {
+                    val report = ObstructionReportRequestDto(
+                        latitude = currentLocation.latitude,
+                        longitude = currentLocation.longitude,
+                        datasetVersionId = 1,
+                        edgeExternalId = blockedEdgeId.toString(),
+                        description = "Jalur terhalang dilaporkan warga via aplikasi",
+                    )
+                    app.obstructionReportQueue.enqueue(report)
+                    mutableUiState.update { state ->
+                        state.copy(
+                            pendingObstructionCount = app.obstructionReportQueue.getPendingReports().size,
+                            obstructionReportMessage = "Rute dialihkan. Laporan jalan terhalang sedang diproses...",
+                        )
+                    }
+                    flushPendingObstructionReports()
                 }
             }.onFailure { error ->
                 mutableUiState.update {
@@ -271,6 +304,62 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
+
+    fun flushPendingObstructionReports() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pendingReports = app.obstructionReportQueue.getPendingReports()
+            if (pendingReports.isEmpty()) {
+                mutableUiState.update { it.copy(pendingObstructionCount = 0) }
+                return@launch
+            }
+
+            var anySent = false
+            var confirmedCount = 0
+            for (report in pendingReports) {
+                val result = app.emergencyApiClient.reportObstruction(report)
+                result.onSuccess { response ->
+                    app.obstructionReportQueue.remove(report.edgeExternalId)
+                    anySent = true
+                    if (response.isConfirmedBlocked) {
+                        confirmedCount++
+                    }
+                }.onFailure {
+                    // Tetap tersimpan di antrean luring
+                }
+            }
+
+            val remainingCount = app.obstructionReportQueue.getPendingReports().size
+            mutableUiState.update { state ->
+                state.copy(
+                    pendingObstructionCount = remainingCount,
+                    obstructionReportMessage = when {
+                        confirmedCount > 0 -> "Ruas jalan kini ditandai putus untuk semua pengguna."
+                        anySent && remainingCount == 0 -> "Laporan jalan terhalang diterima posko bencana."
+                        remainingCount > 0 -> "Laporan tersimpan luring ($remainingCount). Akan dikirim saat sinyal tersedia."
+                        else -> state.obstructionReportMessage
+                    },
+                )
+            }
+        }
+    }
+
+    fun refreshConfirmedObstructions() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = app.emergencyApiClient.getConfirmedObstructions()
+            result.onSuccess { externalIds ->
+                val edgeIds = externalIds.mapNotNull { it.toLongOrNull() }.toSet()
+                if (edgeIds.isNotEmpty()) {
+                    mutableUiState.update { state ->
+                        state.copy(confirmedBlockedEdgeIds = state.confirmedBlockedEdgeIds + edgeIds)
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissObstructionMessage() {
+        mutableUiState.update { it.copy(obstructionReportMessage = null) }
     }
 
     fun performShelterCheckin() {

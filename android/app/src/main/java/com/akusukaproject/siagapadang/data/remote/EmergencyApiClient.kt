@@ -9,6 +9,7 @@ import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
 import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinResponseDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -60,6 +61,26 @@ class EmergencyApiClient(
                     jsonBody = request.toJson().toString(),
                 )
                 ObstructionReportResponseDto.fromJson(JSONObject(responseBody))
+            }
+        }
+
+    /**
+     * Mengambil daftar external ID ruas jalan yang terkonfirmasi terhalang untuk event darurat aktif.
+     */
+    suspend fun getConfirmedObstructions(datasetVersionId: Int? = null): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val queryParam = if (datasetVersionId != null) "?dataset_version_id=$datasetVersionId" else ""
+                val responseBody = executeGet(
+                    endpoint = "${baseUrl.trimEnd('/')}/api/v1/reports/confirmed$queryParam",
+                    requiresDeviceId = false,
+                )
+                val jsonArray = JSONArray(responseBody)
+                val result = mutableListOf<String>()
+                for (i in 0 until jsonArray.length()) {
+                    result.add(jsonArray.getString(i))
+                }
+                result
             }
         }
 

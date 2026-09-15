@@ -44,6 +44,10 @@ data class EvacuationUiState(
     val checkinStatus: CheckinStatus = CheckinStatus.IDLE,
     val checkinMessage: String? = null,
     val checkedInAt: String? = null,
+    val blockedEdgeIds: Set<Long> = emptySet(),
+    val confirmedBlockedEdgeIds: Set<Long> = emptySet(),
+    val obstructionReportMessage: String? = null,
+    val pendingObstructionCount: Int = 0,
 ) {
     val isCheckingIn: Boolean
         get() = checkinStatus == CheckinStatus.CHECKING_IN

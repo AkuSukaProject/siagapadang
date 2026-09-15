@@ -153,6 +153,7 @@ fun EvacuationScreen(
         onSelectAlternative = viewModel::selectAlternativeDestination,
         onMapViewportChanged = viewModel::onMapViewportChanged,
         onPerformCheckin = viewModel::performShelterCheckin,
+        onDismissObstructionMessage = viewModel::dismissObstructionMessage,
     )
 }
 
@@ -169,6 +170,7 @@ private fun EvacuationContent(
     onSelectAlternative: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
     onPerformCheckin: () -> Unit,
+    onDismissObstructionMessage: () -> Unit = {},
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
@@ -356,6 +358,43 @@ private fun EvacuationContent(
                     .align(Alignment.TopCenter)
                     .offset(y = scaled(75f)),
             )
+        }
+
+        state.obstructionReportMessage?.let { message ->
+            Surface(
+                color = SiagaCream,
+                contentColor = SiagaNavy,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.5.dp, SiagaRust),
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp, start = 14.dp, end = 14.dp)
+                    .fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = message,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = onDismissObstructionMessage,
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_figma_close),
+                            contentDescription = "Tutup info hambatan",
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 

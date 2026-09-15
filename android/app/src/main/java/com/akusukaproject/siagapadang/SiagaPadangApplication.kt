@@ -8,6 +8,7 @@ import com.akusukaproject.siagapadang.data.remote.BmkgApiClient
 import com.akusukaproject.siagapadang.data.remote.DataUpdateApiClient
 import com.akusukaproject.siagapadang.data.remote.EmergencyApiClient
 import com.akusukaproject.siagapadang.data.repository.EvacuationRepository
+import com.akusukaproject.siagapadang.data.repository.ObstructionReportQueue
 import com.akusukaproject.siagapadang.data.repository.ZoneRepository
 import com.akusukaproject.siagapadang.sensor.CompassProvider
 import com.akusukaproject.siagapadang.sensor.LocationProvider
@@ -26,6 +27,7 @@ class SiagaPadangApplication : Application() {
     val dataUpdateApiClient by lazy { DataUpdateApiClient(this, BuildConfig.BACKEND_BASE_URL) }
     val anonymousDeviceIdProvider by lazy { AnonymousDeviceIdProvider(this) }
     val emergencyApiClient by lazy { EmergencyApiClient(BuildConfig.BACKEND_BASE_URL, anonymousDeviceIdProvider) }
+    val obstructionReportQueue by lazy { ObstructionReportQueue(this) }
 
     override fun onCreate() {
         super.onCreate()

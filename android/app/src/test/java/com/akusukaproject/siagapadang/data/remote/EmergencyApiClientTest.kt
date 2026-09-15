@@ -32,5 +32,9 @@ class EmergencyApiClientTest {
         )
         assertTrue(checkinResult.isFailure)
         assertEquals("Alamat backend belum dikonfigurasi.", checkinResult.exceptionOrNull()?.message)
+
+        val obstructionResult = client.getConfirmedObstructions()
+        assertTrue(obstructionResult.isFailure)
+        assertEquals("Alamat backend belum dikonfigurasi.", obstructionResult.exceptionOrNull()?.message)
     }
 }

@@ -133,6 +133,7 @@ class EvacuationRepository(
         location: GeoCoordinate,
         currentRoute: EvacuationRoute,
         excludedDestinationNames: Set<String>,
+        excludedEdgeIds: Set<Long> = emptySet(),
     ): EvacuationRoute {
         val nearestNode = findNearestNode(location)
         val candidates = (1..3).mapNotNull { rank ->
@@ -143,6 +144,7 @@ class EvacuationRepository(
             currentRoute = currentRoute,
             candidates = candidates,
             excludedDestinationNames = excludedDestinationNames,
+            excludedEdgeIds = excludedEdgeIds,
         ) ?: throw IllegalStateException("Rute lain yang menghindari jalur ini tidak tersedia")
     }
 

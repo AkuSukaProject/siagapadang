@@ -1,3 +1,4 @@
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast
@@ -126,3 +127,33 @@ def report_obstruction(
         obstruction_id=obstruction.id,
         is_confirmed_blocked=is_confirmed_blocked
     )
+
+
+@router.get("/confirmed", response_model=List[str])
+@router.get("/obstructions/confirmed", response_model=List[str])
+def get_confirmed_obstructions(
+    dataset_version_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Mengambil daftar edge_external_id yang statusnya CONFIRMED untuk event darurat aktif saat ini.
+    Jika tidak ada event aktif, mengembalikan list kosong.
+    """
+    active_event = db.query(EmergencyEvent).filter(
+        EmergencyEvent.status == EventStatus.ACTIVE
+    ).order_by(EmergencyEvent.started_at.desc()).first()
+
+    if not active_event:
+        return []
+
+    query = db.query(Obstruction.edge_external_id).filter(
+        Obstruction.event_id == active_event.id,
+        Obstruction.status == ObstructionStatus.CONFIRMED,
+        Obstruction.expires_at > datetime.now(pytz.utc)
+    )
+    if dataset_version_id is not None:
+        query = query.filter(Obstruction.dataset_version_id == dataset_version_id)
+
+    confirmed_edges = [row[0] for row in query.distinct().all()]
+    return confirmed_edges
+

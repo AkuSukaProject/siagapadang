@@ -9,12 +9,15 @@ object AlternativeRouteSelector {
         currentRoute: EvacuationRoute,
         candidates: List<EvacuationRoute>,
         excludedDestinationNames: Set<String> = emptySet(),
+        excludedEdgeIds: Set<Long> = emptySet(),
     ): EvacuationRoute? = candidates
         .asSequence()
         .filter { candidate -> candidate.destinationName != currentRoute.destinationName }
         .filterNot { candidate -> candidate.destinationName in excludedDestinationNames }
         .minWithOrNull(
             compareBy<EvacuationRoute> { candidate ->
+                if (excludedEdgeIds.isNotEmpty() && candidate.edgeIds.any { it in excludedEdgeIds }) 1 else 0
+            }.thenBy { candidate ->
                 sharedLeadingDistanceMeters(
                     currentLocation = currentLocation,
                     referenceCoordinates = currentRoute.coordinates,
