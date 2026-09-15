@@ -741,24 +741,26 @@ private fun StatusDetailCard(
         StatusDetailType.BMKG -> {
             val bmkg = state.bmkgStatus
             title = when {
-                state.isLoadingBmkgStatus -> "Memuat informasi BMKG"
-                bmkg?.isStale == true -> "Data BMKG tersimpan"
-                bmkg != null -> "Informasi gempa terbaru"
-                else -> "Informasi BMKG belum tersedia"
+                state.isLoadingBmkgStatus -> "Memuat info gempa"
+                bmkg?.isStale == true -> "Info gempa tersimpan"
+                bmkg?.magnitude?.isNotBlank() == true -> "Gempa M${bmkg.magnitude}"
+                bmkg != null -> "Gempa terbaru BMKG"
+                else -> "Info gempa belum tersedia"
             }
             message = when {
-                state.isLoadingBmkgStatus -> "Aplikasi sedang menghubungi backend Siaga Padang."
+                state.isLoadingBmkgStatus -> "Mengambil data resmi BMKG."
                 state.bmkgErrorMessage != null ->
-                    "${state.bmkgErrorMessage} Navigasi luring tetap dapat digunakan."
-                bmkg != null -> buildString {
-                    append(listOf(bmkg.eventDate, bmkg.eventTime).filter { it.isNotBlank() }.joinToString(" • "))
-                    if (bmkg.magnitude.isNotBlank()) append("\nMagnitudo ${bmkg.magnitude}")
-                    if (bmkg.depth.isNotBlank()) append(" • Kedalaman ${bmkg.depth}")
-                    if (bmkg.region.isNotBlank()) append("\n${bmkg.region}")
-                    if (bmkg.potential.isNotBlank()) append("\n${bmkg.potential}")
-                    append("\nSumber: ${bmkg.source}")
-                }
-                else -> "Hubungkan perangkat ke jaringan untuk mengambil informasi resmi terbaru."
+                    "Info gempa belum dapat diperbarui. Rute evakuasi tetap aktif."
+                bmkg != null -> listOfNotNull(
+                    bmkg.region.takeIf { it.isNotBlank() },
+                    bmkg.potential.takeIf { it.contains("tsunami", ignoreCase = true) },
+                    listOf(bmkg.eventDate, bmkg.eventTime)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                        .takeIf { it.isNotBlank() },
+                    "Sumber: BMKG",
+                ).joinToString("\n")
+                else -> "Hubungkan ke internet untuk memperbarui info gempa."
             }
             color = bmkgStatusColor(state)
         }
@@ -805,7 +807,7 @@ private fun StatusDetailCard(
                                 modifier = Modifier.size((16f * scale).dp),
                             )
                         } else {
-                            Text("Muat ulang", color = SiagaNavy)
+                            Text("Perbarui", color = SiagaNavy)
                         }
                     }
                 }
