@@ -15,6 +15,7 @@ import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.data.remote.model.ObstructionReportRequestDto
+import com.akusukaproject.siagapadang.data.remote.model.OccupancyReportRequestDto
 import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
 import kotlinx.coroutines.Dispatchers
 import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
@@ -424,6 +425,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                         checkedInAt = response.checkedInAt,
                     )
                 }
+                fetchShelterOccupancy(tesId)
             }.onFailure { error ->
                 mutableUiState.update {
                     it.copy(
@@ -441,7 +443,59 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 checkinStatus = CheckinStatus.IDLE,
                 checkinMessage = null,
                 checkedInAt = null,
+                occupancyStatus = null,
+                isReportingOccupancy = false,
+                occupancyReportMessage = null,
             )
+        }
+    }
+
+    fun reportShelterOccupancy(level: String) {
+        val currentState = mutableUiState.value
+        if (currentState.checkinStatus != CheckinStatus.SUCCESS || currentState.isReportingOccupancy) return
+        val tesId = currentState.destinationExternalId ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            mutableUiState.update {
+                it.copy(
+                    isReportingOccupancy = true,
+                    occupancyReportMessage = "Mengirim laporan kondisi shelter...",
+                )
+            }
+            val result = app.emergencyApiClient.reportOccupancy(
+                OccupancyReportRequestDto(
+                    evacuationPointExternalId = tesId,
+                    level = level,
+                ),
+            )
+            result.onSuccess { statusResponse ->
+                mutableUiState.update {
+                    it.copy(
+                        isReportingOccupancy = false,
+                        occupancyStatus = statusResponse,
+                        occupancyReportMessage = "Terima kasih, laporan kondisi shelter berhasil diperbarui!",
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isReportingOccupancy = false,
+                        occupancyReportMessage = error.message ?: "Gagal mengirim laporan kondisi shelter.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun fetchShelterOccupancy(evacuationPointExternalId: String? = null) {
+        val tesId = evacuationPointExternalId ?: mutableUiState.value.destinationExternalId ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = app.emergencyApiClient.getOccupancyStatus(tesId)
+            result.onSuccess { statusResponse ->
+                mutableUiState.update {
+                    it.copy(occupancyStatus = statusResponse)
+                }
+            }
         }
     }
 

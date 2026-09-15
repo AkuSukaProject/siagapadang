@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseDto
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -154,6 +156,7 @@ fun EvacuationScreen(
         onMapViewportChanged = viewModel::onMapViewportChanged,
         onPerformCheckin = viewModel::performShelterCheckin,
         onDismissObstructionMessage = viewModel::dismissObstructionMessage,
+        onReportOccupancy = viewModel::reportShelterOccupancy,
     )
 }
 
@@ -171,6 +174,7 @@ private fun EvacuationContent(
     onMapViewportChanged: (GeoCoordinate) -> Unit,
     onPerformCheckin: () -> Unit,
     onDismissObstructionMessage: () -> Unit = {},
+    onReportOccupancy: (String) -> Unit = {},
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
@@ -423,7 +427,11 @@ private fun EvacuationContent(
             checkinStatus = state.checkinStatus,
             checkinMessage = state.checkinMessage,
             checkedInAt = state.checkedInAt,
+            occupancyStatus = state.occupancyStatus,
+            isReportingOccupancy = state.isReportingOccupancy,
+            occupancyReportMessage = state.occupancyReportMessage,
             onPerformCheckin = onPerformCheckin,
+            onReportOccupancy = onReportOccupancy,
             onAcknowledge = { showArrivalDialog = false },
         )
     }
@@ -2709,7 +2717,11 @@ private fun ArrivalDialog(
     checkinStatus: CheckinStatus = CheckinStatus.IDLE,
     checkinMessage: String? = null,
     checkedInAt: String? = null,
+    occupancyStatus: OccupancyStatusResponseDto? = null,
+    isReportingOccupancy: Boolean = false,
+    occupancyReportMessage: String? = null,
     onPerformCheckin: () -> Unit = {},
+    onReportOccupancy: (String) -> Unit = {},
     onAcknowledge: () -> Unit,
 ) {
     Dialog(
@@ -2896,6 +2908,131 @@ private fun ArrivalDialog(
                                         text = "Waktu: $timestamp",
                                         fontSize = 11.sp,
                                         color = SiagaNavy.copy(alpha = 0.65f),
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(SiagaNavy.copy(alpha = 0.15f)),
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = "Status Kepadatan Tempat Evakuasi",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SiagaNavy,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val levelText = when (occupancyStatus?.level) {
+                                    "LOW" -> "🟢 Sepi / Masih Banyak Tempat"
+                                    "MODERATE" -> "🟡 Mulai Padat"
+                                    "FULL" -> "🔴 Penuh"
+                                    else -> "⚪ Belum ada data laporan warga"
+                                }
+                                Text(
+                                    text = levelText,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (occupancyStatus?.level) {
+                                        "LOW" -> Color(0xFF0F5132)
+                                        "MODERATE" -> Color(0xFF856404)
+                                        "FULL" -> SiagaRust
+                                        else -> SiagaNavy.copy(alpha = 0.7f)
+                                    },
+                                )
+                                Text(
+                                    text = if (occupancyStatus != null && occupancyStatus.reportCount > 0) {
+                                        "Sumber: ${occupancyStatus.source} (${occupancyStatus.reportCount} laporan)"
+                                    } else {
+                                        "Sumber: Belum ada laporan warga dalam 30 menit terakhir"
+                                    },
+                                    fontSize = 10.sp,
+                                    color = SiagaNavy.copy(alpha = 0.65f),
+                                    textAlign = TextAlign.Center,
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Bagikan kondisi keterisian terkini:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = SiagaNavy.copy(alpha = 0.85f),
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                if (isReportingOccupancy) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = SiagaNavy,
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Mengirim status...",
+                                            fontSize = 11.sp,
+                                            color = SiagaNavy,
+                                        )
+                                    }
+                                } else {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Button(
+                                            onClick = { onReportOccupancy("LOW") },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFD4EDDA),
+                                                contentColor = Color(0xFF155724),
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f).height(36.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(text = "Sepi", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Button(
+                                            onClick = { onReportOccupancy("MODERATE") },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFFFF3CD),
+                                                contentColor = Color(0xFF856404),
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f).height(36.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(text = "Sedang", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Button(
+                                            onClick = { onReportOccupancy("FULL") },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFF8D7DA),
+                                                contentColor = Color(0xFF721C24),
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f).height(36.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(text = "Penuh", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                occupancyReportMessage?.let { msg ->
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = msg,
+                                        fontSize = 10.sp,
+                                        color = SiagaNavy.copy(alpha = 0.8f),
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
                             }

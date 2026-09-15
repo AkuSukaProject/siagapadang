@@ -8,6 +8,7 @@ import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.data.model.LocalDatasetManifest
 import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
 import com.akusukaproject.siagapadang.data.model.TsunamiZoneOverlay
+import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseDto
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 
 data class EvacuationUiState(
@@ -48,6 +49,9 @@ data class EvacuationUiState(
     val confirmedBlockedEdgeIds: Set<Long> = emptySet(),
     val obstructionReportMessage: String? = null,
     val pendingObstructionCount: Int = 0,
+    val occupancyStatus: OccupancyStatusResponseDto? = null,
+    val isReportingOccupancy: Boolean = false,
+    val occupancyReportMessage: String? = null,
 ) {
     val isCheckingIn: Boolean
         get() = checkinStatus == CheckinStatus.CHECKING_IN
