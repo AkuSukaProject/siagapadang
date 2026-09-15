@@ -40,7 +40,14 @@ data class EvacuationUiState(
     val arrivalDistanceMeters: Int? = null,
     val errorMessage: String? = null,
     val compassMessage: String? = null,
+    val activeEdgeId: Long? = null,
 ) {
+    val destinationExternalId: String?
+        get() = route?.destinationExternalId
+
+    val datasetVersion: String
+        get() = route?.datasetVersion.orEmpty()
+
     val locationQuality: LocationQuality
         get() = when (val accuracy = locationAccuracyMeters) {
             null -> LocationQuality.SEARCHING

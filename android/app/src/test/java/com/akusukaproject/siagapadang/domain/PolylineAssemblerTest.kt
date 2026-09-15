@@ -97,4 +97,32 @@ class PolylineAssemblerTest {
         assertEquals(100.1, coordinates.first().longitude, 0.0)
         assertEquals(100.2, coordinates.last().longitude, 0.0)
     }
+
+    @Test
+    fun `assembler mengembalikan daftar edgeId yang urut sesuai jalur`() {
+        val edge1 = EdgeRow(
+            edgeId = 101,
+            u = 1,
+            v = 2,
+            length = 10.0,
+            geometry = "LINESTRING (100.0 0.0, 100.1 0.1)",
+        )
+        val edge2 = EdgeRow(
+            edgeId = 102,
+            u = 2,
+            v = 3,
+            length = 20.0,
+            geometry = "LINESTRING (100.1 0.1, 100.3 0.3)",
+        )
+
+        val assembled = PolylineAssembler.assembleWithEdges(
+            pathNodeIds = listOf(1, 2, 3),
+            edges = listOf(edge1, edge2),
+        )
+
+        assertEquals(listOf(101L, 102L), assembled.edgeIds)
+        assertEquals(2, assembled.edgeCoordinateRanges.size)
+        assertEquals(0..1, assembled.edgeCoordinateRanges[0])
+        assertEquals(1..2, assembled.edgeCoordinateRanges[1])
+    }
 }

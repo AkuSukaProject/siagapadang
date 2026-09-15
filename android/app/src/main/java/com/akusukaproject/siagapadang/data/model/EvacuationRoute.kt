@@ -9,4 +9,8 @@ data class EvacuationRoute(
     val destinationCoordinate: GeoCoordinate?,
     val destinationCapacityPeople: Int? = null,
     val destinationZoneCode: String? = null,
+    val destinationExternalId: String? = null,
+    val edgeIds: List<Long> = emptyList(),
+    val edgeCoordinateRanges: List<IntRange> = emptyList(),
+    val datasetVersion: String = "",
 )

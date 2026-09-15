@@ -4,49 +4,76 @@ import com.akusukaproject.siagapadang.data.local.EdgeRow
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import kotlin.math.abs
 
+data class AssembledPolyline(
+    val coordinates: List<GeoCoordinate>,
+    val edgeIds: List<Long>,
+    val edgeCoordinateRanges: List<IntRange> = emptyList(),
+)
+
 object PolylineAssembler {
     fun assemble(
         pathNodeIds: List<Long>,
         edges: List<EdgeRow>,
         nodeCoordinates: Map<Long, GeoCoordinate> = emptyMap(),
-    ): List<GeoCoordinate> {
+    ): List<GeoCoordinate> = assembleWithEdges(pathNodeIds, edges, nodeCoordinates).coordinates
+
+    fun assembleWithEdges(
+        pathNodeIds: List<Long>,
+        edges: List<EdgeRow>,
+        nodeCoordinates: Map<Long, GeoCoordinate> = emptyMap(),
+    ): AssembledPolyline {
         require(pathNodeIds.size >= 2) { "Rute harus memiliki sedikitnya dua node" }
 
         val shortestEdgeByPair = edges
             .groupBy { edge -> unorderedPair(edge.u, edge.v) }
             .mapValues { (_, candidates) -> candidates.minBy { it.length } }
 
-        return buildList {
-            pathNodeIds.zipWithNext().forEach { (fromNodeId, toNodeId) ->
-                val edge = shortestEdgeByPair[unorderedPair(fromNodeId, toNodeId)]
-                    ?: throw IllegalStateException(
-                        "Ruas rute tidak ditemukan: $fromNodeId → $toNodeId",
-                    )
-                val ordered = if (edge.geometry.isBlank()) {
-                    listOf(
-                        nodeCoordinates[fromNodeId]
-                            ?: throw IllegalStateException("Koordinat node $fromNodeId tidak ditemukan"),
-                        nodeCoordinates[toNodeId]
-                            ?: throw IllegalStateException("Koordinat node $toNodeId tidak ditemukan"),
-                    )
-                } else {
-                    val parsed = WktLineStringParser.parse(edge.geometry)
-                    orderGeometry(
-                        parsed = parsed,
-                        edge = edge,
-                        fromNodeId = fromNodeId,
-                        toNodeId = toNodeId,
-                        nodeCoordinates = nodeCoordinates,
-                    )
-                }
+        val orderedEdgeIds = mutableListOf<Long>()
+        val coordinateRanges = mutableListOf<IntRange>()
+        val assembledCoordinates = mutableListOf<GeoCoordinate>()
 
-                if (isNotEmpty() && sameCoordinate(last(), ordered.first())) {
-                    addAll(ordered.drop(1))
-                } else {
-                    addAll(ordered)
-                }
+        pathNodeIds.zipWithNext().forEach { (fromNodeId, toNodeId) ->
+            val edge = shortestEdgeByPair[unorderedPair(fromNodeId, toNodeId)]
+                ?: throw IllegalStateException(
+                    "Ruas rute tidak ditemukan: $fromNodeId → $toNodeId",
+                )
+            orderedEdgeIds.add(edge.edgeId)
+
+            val ordered = if (edge.geometry.isBlank()) {
+                listOf(
+                    nodeCoordinates[fromNodeId]
+                        ?: throw IllegalStateException("Koordinat node $fromNodeId tidak ditemukan"),
+                    nodeCoordinates[toNodeId]
+                        ?: throw IllegalStateException("Koordinat node $toNodeId tidak ditemukan"),
+                )
+            } else {
+                val parsed = WktLineStringParser.parse(edge.geometry)
+                orderGeometry(
+                    parsed = parsed,
+                    edge = edge,
+                    fromNodeId = fromNodeId,
+                    toNodeId = toNodeId,
+                    nodeCoordinates = nodeCoordinates,
+                )
             }
+
+            val startIndex = if (assembledCoordinates.isNotEmpty() && sameCoordinate(assembledCoordinates.last(), ordered.first())) {
+                val start = assembledCoordinates.lastIndex
+                assembledCoordinates.addAll(ordered.drop(1))
+                start
+            } else {
+                val start = assembledCoordinates.size
+                assembledCoordinates.addAll(ordered)
+                start
+            }
+            coordinateRanges.add(startIndex..assembledCoordinates.lastIndex)
         }
+
+        return AssembledPolyline(
+            coordinates = assembledCoordinates,
+            edgeIds = orderedEdgeIds,
+            edgeCoordinateRanges = coordinateRanges,
+        )
     }
 
     private fun unorderedPair(first: Long, second: Long): Pair<Long, Long> =

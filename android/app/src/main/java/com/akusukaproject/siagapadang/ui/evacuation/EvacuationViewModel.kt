@@ -14,6 +14,7 @@ import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
+import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
 import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
@@ -478,8 +479,16 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+        val activeEdgeId = state.route.let { currentRoute ->
+            ActiveEdgeFinder.findActiveEdgeId(
+                location = location,
+                route = currentRoute,
+                nearestRouteCoordinateIndex = guidance?.nearestRouteIndex,
+            )
+        }
         return state.copy(
             guidance = guidance,
+            activeEdgeId = activeEdgeId,
         )
     }
 

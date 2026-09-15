@@ -17,8 +17,11 @@ import org.maplibre.geojson.MultiLineString
 import org.maplibre.geojson.Point
 import kotlin.math.roundToInt
 
+import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
+
 class EvacuationRepository(
     private val dao: EvacuationDao,
+    private val datasetVersion: String = DEFAULT_DATASET_VERSION,
 ) {
     @Volatile
     private var cachedOfflineRoadOverlay: OfflineRoadOverlay? = null
@@ -93,8 +96,8 @@ class EvacuationRepository(
         val nodeCoordinates = dao.findNodesByIds(distinctNodeIds).associate { node ->
             node.nodeId to GeoCoordinate(latitude = node.lat, longitude = node.lon)
         }
-        val coordinates = withContext(Dispatchers.Default) {
-            PolylineAssembler.assemble(pathNodeIds, edges, nodeCoordinates)
+        val assembled = withContext(Dispatchers.Default) {
+            PolylineAssembler.assembleWithEdges(pathNodeIds, edges, nodeCoordinates)
         }
         val destination = dao.findTesByName(selection.destinationName)
 
@@ -103,14 +106,28 @@ class EvacuationRepository(
             rank = rank,
             destinationName = selection.destinationName,
             estimatedSeconds = (selection.etaMinutes * 60.0).roundToInt(),
-            coordinates = coordinates,
+            coordinates = assembled.coordinates,
             destinationCoordinate = destination?.let { tes ->
                 GeoCoordinate(latitude = tes.lat, longitude = tes.lon)
             },
             destinationCapacityPeople = destination?.kapasitas?.roundToInt(),
             destinationZoneCode = destination?.zona,
+            destinationExternalId = destination?.tesId,
+            edgeIds = assembled.edgeIds,
+            edgeCoordinateRanges = assembled.edgeCoordinateRanges,
+            datasetVersion = datasetVersion,
         )
     }
+
+    fun findActiveEdgeId(
+        location: GeoCoordinate,
+        route: EvacuationRoute,
+        nearestCoordinateIndex: Int? = null,
+    ): Long? = ActiveEdgeFinder.findActiveEdgeId(
+        location = location,
+        route = route,
+        nearestRouteCoordinateIndex = nearestCoordinateIndex,
+    )
 
     suspend fun findAlternativeRoute(
         location: GeoCoordinate,
@@ -153,7 +170,8 @@ class EvacuationRepository(
         val etaMinutes: Double,
     )
 
-    private companion object {
+    companion object {
+        const val DEFAULT_DATASET_VERSION = "2026.09.13"
         val SEARCH_WINDOWS = listOf(0.005, 0.02)
         const val WALKING_SPEED_METERS_PER_SECOND = 1.2
         const val ROAD_VIEWPORT_GRID_DEGREES = 0.006
