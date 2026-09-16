@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast as type_cast
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast
@@ -118,19 +118,20 @@ def report_obstruction(
     
     is_confirmed_blocked = False
     
-    if recent_reports_count >= 3 and obstruction.status == ObstructionStatus.PENDING:
+    current_status = obstruction.status
+    if recent_reports_count >= 3 and current_status == ObstructionStatus.PENDING:
         obstruction.status = ObstructionStatus.CONFIRMED
         obstruction.confirmed_at = datetime.now(pytz.utc)
         obstruction.expires_at = datetime.now(pytz.utc) + timedelta(hours=6)
         db.commit()
         is_confirmed_blocked = True
-    elif obstruction.status == ObstructionStatus.CONFIRMED:
+    elif current_status == ObstructionStatus.CONFIRMED:
         is_confirmed_blocked = True
         
     return ObstructionReportResponse(
         status="success",
         message="Laporan diterima" if not is_confirmed_blocked else "Jalan ini kini ditandai PUTUS untuk pengguna lain.",
-        obstruction_id=obstruction.id,
+        obstruction_id=type_cast(int, obstruction.id),
         is_confirmed_blocked=is_confirmed_blocked
     )
 
