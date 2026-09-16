@@ -216,9 +216,16 @@ Kriteria selesai:
 
 ### P1-03 — Kedatangan di Luar Zona Rendaman
 
-**Status:** Sebagian.
+**Status:** Implementasi selesai pada branch `feat/p1-arrival-zone-transition`; validasi GPS lapangan/perangkat masih ditunda.
 
-Saat ini kedatangan dikonfirmasi dekat TES atau ujung rute. Perilaku ini belum sama dengan F-06 yang meminta transisi ketika pengguna memasuki kawasan di luar zona rendaman.
+Kedatangan kini dapat dikonfirmasi melalui dua keadaan: pengguna sampai di TES/ujung rute,
+atau pengguna berpindah dari dalam ke luar poligon zona rendaman. Transisi keluar zona baru
+diterima setelah tiga pembacaan GPS berturut-turut dengan akurasi maksimal 35 meter. Aplikasi
+yang mulai digunakan di luar zona tidak langsung dianggap telah menyelesaikan evakuasi.
+
+Dialog dan tombol status membedakan kedatangan di TES dari keberadaan di luar zona rendaman.
+Check-in dan laporan okupansi hanya tersedia untuk kedatangan di TES, sedangkan redaksi keluar
+zona mengarahkan pengguna menjauhi pantai tanpa memberikan klaim keselamatan.
 
 Pekerjaan:
 

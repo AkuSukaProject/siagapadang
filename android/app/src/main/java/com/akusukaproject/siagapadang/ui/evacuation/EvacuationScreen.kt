@@ -416,6 +416,11 @@ private fun EvacuationContent(
 
     if (showArrivalDialog && (state.hasArrived || showArrivalEvidence)) {
         ArrivalDialog(
+            arrivalReason = if (showArrivalEvidence) {
+                EvacuationArrivalReason.EVACUATION_POINT
+            } else {
+                state.arrivalReason ?: EvacuationArrivalReason.EVACUATION_POINT
+            },
             destinationName = if (showArrivalEvidence) {
                 evidenceDestinationName
             } else {
@@ -1712,6 +1717,7 @@ private fun EvacuationMapPanel(
             enabled = state.canSelectAlternative,
             isLoading = state.isLoadingRoute,
             hasArrived = state.hasArrived,
+            arrivalReason = state.arrivalReason,
             onClick = onBlockedRouteClick,
             scale = scale,
             modifier = Modifier
@@ -2479,11 +2485,14 @@ private fun BlockedRouteButton(
     enabled: Boolean,
     isLoading: Boolean,
     hasArrived: Boolean,
+    arrivalReason: EvacuationArrivalReason?,
     onClick: () -> Unit,
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
     val label = when {
+        hasArrived && arrivalReason == EvacuationArrivalReason.OUTSIDE_INUNDATION_ZONE ->
+            "Di luar zona rendaman"
         hasArrived -> "Anda telah sampai di TES"
         isLoading -> "Mencari alternatif tujuan…"
         enabled -> "Jalur terhalang?"
@@ -2735,6 +2744,7 @@ private fun BlockedRouteDialog(
 
 @Composable
 private fun ArrivalDialog(
+    arrivalReason: EvacuationArrivalReason = EvacuationArrivalReason.EVACUATION_POINT,
     destinationName: String,
     destinationCapacityPeople: Int?,
     checkinStatus: CheckinStatus = CheckinStatus.IDLE,
@@ -2747,6 +2757,7 @@ private fun ArrivalDialog(
     onReportOccupancy: (String) -> Unit = {},
     onAcknowledge: () -> Unit,
 ) {
+    val arrivedOutsideZone = arrivalReason == EvacuationArrivalReason.OUTSIDE_INUNDATION_ZONE
     Dialog(
         onDismissRequest = {},
         properties = DialogProperties(
@@ -2784,31 +2795,37 @@ private fun ArrivalDialog(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Anda telah sampai di TES",
+                    text = if (arrivedOutsideZone) {
+                        "Anda berada di luar zona rendaman"
+                    } else {
+                        "Anda telah sampai di TES"
+                    },
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = destinationName,
-                    color = SiagaRust,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                destinationCapacityPeople?.takeIf { capacity -> capacity > 0 }?.let { capacity ->
-                    Spacer(modifier = Modifier.height(10.dp))
+                if (!arrivedOutsideZone) {
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Kapasitas rancangan BPBD: ${formatPeople(capacity)} orang. " +
-                            "Bukan data keterisian langsung.",
-                        color = SiagaNavy.copy(alpha = 0.78f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = destinationName,
+                        color = SiagaRust,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    destinationCapacityPeople?.takeIf { capacity -> capacity > 0 }?.let { capacity ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Kapasitas rancangan BPBD: ${formatPeople(capacity)} orang. " +
+                                "Bukan data keterisian langsung.",
+                            color = SiagaNavy.copy(alpha = 0.78f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
                 Surface(
@@ -2818,7 +2835,13 @@ private fun ArrivalDialog(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = "Tetap berada di TES dan tunggu arahan RT/RW selama 30 menit. Jangan kembali ke zona pantai.",
+                        text = if (arrivedOutsideZone) {
+                            "Tetap menjauh dari arah pantai dan jangan kembali ke zona rendaman. " +
+                                "Ikuti arahan petugas atau rambu evakuasi di lapangan."
+                        } else {
+                            "Tetap berada di TES dan tunggu arahan RT/RW selama 30 menit. " +
+                                "Jangan kembali ke zona pantai."
+                        },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         lineHeight = 20.sp,
@@ -2828,13 +2851,18 @@ private fun ArrivalDialog(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Navigasi dan hitung mundur telah dihentikan.",
+                    text = if (arrivedOutsideZone) {
+                        "Navigasi dihentikan setelah perpindahan keluar zona dikonfirmasi oleh beberapa pembacaan GPS."
+                    } else {
+                        "Navigasi dan hitung mundur telah dihentikan."
+                    },
                     color = SiagaNavy.copy(alpha = 0.72f),
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(modifier = Modifier.height(14.dp))
-                Surface(
+                if (!arrivedOutsideZone) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(
                     color = when (checkinStatus) {
                         CheckinStatus.SUCCESS -> SiagaNextGreen.copy(alpha = 0.15f)
                         CheckinStatus.FAILED -> SiagaRust.copy(alpha = 0.12f)
@@ -3093,6 +3121,7 @@ private fun ArrivalDialog(
                                 }
                             }
                         }
+                    }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))

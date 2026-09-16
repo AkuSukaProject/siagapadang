@@ -25,6 +25,7 @@ import com.akusukaproject.siagapadang.domain.ManeuverType
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
 import com.akusukaproject.siagapadang.domain.RouteGuidanceCalculator
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
+import com.akusukaproject.siagapadang.domain.ZoneExitConfirmationTracker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +57,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private var minimumRouteSegmentFraction = 0.0
     private var announcedManeuverIndex: Int? = null
     private var lastZoneCheckLocation: GeoCoordinate? = null
+    private var lastZoneCheckElapsedMillis = 0L
     private var lastOfflineRoadCenter: GeoCoordinate? = null
     private var confirmedZoneKey: String? = null
     private var pendingZoneKey: String? = null
@@ -63,6 +65,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     private val countdownStartedAtElapsedMillis = SystemClock.elapsedRealtime()
     private val rejectedDestinationNames = mutableSetOf<String>()
     private val arrivalTracker = ArrivalConfirmationTracker()
+    private val zoneExitTracker = ZoneExitConfirmationTracker()
 
     init {
         loadTsunamiZoneOverlay()
@@ -306,6 +309,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                                 newRoute = route,
                             ),
                             hasArrived = false,
+                            arrivalReason = null,
                             arrivalDistanceMeters = null,
                             checkinStatus = CheckinStatus.IDLE,
                             checkinMessage = null,
@@ -401,7 +405,11 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun performShelterCheckin() {
         val currentState = mutableUiState.value
-        if (!currentState.hasArrived || currentState.isCheckingIn) return
+        if (
+            !currentState.hasArrived ||
+            currentState.arrivalReason != EvacuationArrivalReason.EVACUATION_POINT ||
+            currentState.isCheckingIn
+        ) return
 
         val tesId = currentState.destinationExternalId
         if (tesId.isNullOrBlank()) {
@@ -559,7 +567,10 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                         if (arrivalConfirmedNow) onArrivalConfirmed()
                         if (!arrivalConfirmedNow) maybeVibrateUpcomingManeuver()
                         requestInitialRoute(deviceLocation.coordinate)
-                        evaluateCurrentZone(deviceLocation.coordinate)
+                        evaluateCurrentZone(
+                            location = deviceLocation.coordinate,
+                            accuracyMeters = deviceLocation.accuracyMeters,
+                        )
                     }
             }
         }
@@ -609,6 +620,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             remainingAlternativeCount = EvacuationUiState.MAX_ALTERNATIVE_COUNT,
                             alternativeRouteMessage = null,
                             hasArrived = false,
+                            arrivalReason = null,
                             arrivalDistanceMeters = null,
                             errorMessage = null,
                             checkinStatus = CheckinStatus.IDLE,
@@ -629,29 +641,49 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun evaluateCurrentZone(location: GeoCoordinate) {
+    private fun evaluateCurrentZone(location: GeoCoordinate, accuracyMeters: Float?) {
         val movedMeters = lastZoneCheckLocation?.let { previous ->
             NearestNodeFinder.distanceMeters(previous, location)
         } ?: Double.POSITIVE_INFINITY
-        if (movedMeters < MIN_ZONE_CHECK_MOVEMENT_METERS || zoneStatusJob?.isActive == true) return
+        val now = SystemClock.elapsedRealtime()
+        val elapsedMillis = now - lastZoneCheckElapsedMillis
+        if (
+            (movedMeters < MIN_ZONE_CHECK_MOVEMENT_METERS &&
+                elapsedMillis < MAX_ZONE_CHECK_INTERVAL_MILLIS) ||
+            zoneStatusJob?.isActive == true
+        ) return
         lastZoneCheckLocation = location
+        lastZoneCheckElapsedMillis = now
         zoneStatusJob = viewModelScope.launch {
             runCatching { zoneRepository.findStatus(location) }
-                .onSuccess(::applyZoneStatus)
+                .onSuccess { status -> applyZoneStatus(status, accuracyMeters) }
                 .onFailure { error -> Log.w(LOG_TAG, "Status zona tidak dapat diperbarui", error) }
         }
     }
 
-    private fun applyZoneStatus(status: InundationZoneStatus) {
-        if (status == InundationZoneStatus.DataUnavailable) return
+    private fun applyZoneStatus(status: InundationZoneStatus, accuracyMeters: Float?) {
+        if (status == InundationZoneStatus.DataUnavailable) {
+            zoneExitTracker.update(status, accuracyMeters)
+            pendingZoneKey = null
+            pendingZoneConfirmationCount = 0
+            return
+        }
+        val exitConfirmed = zoneExitTracker.update(status, accuracyMeters)
+        if (accuracyMeters == null || accuracyMeters > MAX_ZONE_ACCURACY_METERS) {
+            pendingZoneKey = null
+            pendingZoneConfirmationCount = 0
+            return
+        }
         val candidateKey = status.zoneCategoryKey()
         if (confirmedZoneKey == null) {
             confirmZoneStatus(status, candidateKey, isInitial = true)
+            if (exitConfirmed) confirmOutsideZoneArrival()
             return
         }
         if (candidateKey == confirmedZoneKey) {
             pendingZoneKey = null
             pendingZoneConfirmationCount = 0
+            if (exitConfirmed) confirmOutsideZoneArrival()
             return
         }
         if (pendingZoneKey == candidateKey) {
@@ -663,6 +695,22 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         if (pendingZoneConfirmationCount >= REQUIRED_ZONE_TRANSITION_CONFIRMATIONS) {
             confirmZoneStatus(status, candidateKey, isInitial = false)
         }
+        if (exitConfirmed) confirmOutsideZoneArrival()
+    }
+
+    private fun confirmOutsideZoneArrival() {
+        var confirmedNow = false
+        mutableUiState.update { state ->
+            if (state.hasArrived || state.route == null) return@update state
+            confirmedNow = true
+            state.copy(
+                hasArrived = true,
+                arrivalReason = EvacuationArrivalReason.OUTSIDE_INUNDATION_ZONE,
+                arrivalDistanceMeters = null,
+                guidance = outsideZoneArrivalGuidance(),
+            )
+        }
+        if (confirmedNow) onArrivalConfirmed()
     }
 
     private fun confirmZoneStatus(
@@ -781,6 +829,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         return if (hasArrived) {
             guidedState.copy(
                 hasArrived = true,
+                arrivalReason = EvacuationArrivalReason.EVACUATION_POINT,
                 arrivalDistanceMeters = distanceMeters,
                 guidance = arrivalGuidance(distanceMeters),
             )
@@ -797,6 +846,16 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             ),
         ),
         remainingDistanceMeters = distanceMeters,
+    )
+
+    private fun outsideZoneArrivalGuidance() = RouteGuidanceSnapshot(
+        instructions = listOf(
+            ManeuverGuidance(
+                type = ManeuverType.ARRIVE,
+                distanceMeters = 0,
+            ),
+        ),
+        remainingDistanceMeters = 0,
     )
 
     private fun onArrivalConfirmed() {
@@ -870,6 +929,8 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         private const val LOG_TAG = "EvacuationTiming"
         private const val MANEUVER_ALERT_DISTANCE_METERS = 30
         private const val MIN_ZONE_CHECK_MOVEMENT_METERS = 12.0
+        private const val MAX_ZONE_CHECK_INTERVAL_MILLIS = 1_500L
+        private const val MAX_ZONE_ACCURACY_METERS = 35f
         private const val REQUIRED_ZONE_TRANSITION_CONFIRMATIONS = 2
         private const val ROAD_VIEWPORT_RELOAD_METERS = 500.0
         private const val ROAD_VIEWPORT_DEBOUNCE_MILLIS = 120L

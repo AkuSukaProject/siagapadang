@@ -40,6 +40,7 @@ data class EvacuationUiState(
     val alternativeRouteVersion: Int = 0,
     val alternativeRouteMessage: String? = null,
     val hasArrived: Boolean = false,
+    val arrivalReason: EvacuationArrivalReason? = null,
     val arrivalDistanceMeters: Int? = null,
     val errorMessage: String? = null,
     val compassMessage: String? = null,
@@ -93,4 +94,9 @@ enum class CheckinStatus {
     CHECKING_IN,
     SUCCESS,
     FAILED,
+}
+
+enum class EvacuationArrivalReason {
+    EVACUATION_POINT,
+    OUTSIDE_INUNDATION_ZONE,
 }
