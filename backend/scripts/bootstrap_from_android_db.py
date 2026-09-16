@@ -51,7 +51,9 @@ def activate_version(db, dataset_name: str, version: str, checksum: str) -> Data
         )
         db.add(data_version)
     else:
+        data_version.schema_version = "android-v1"
         data_version.checksum = checksum
+        data_version.minimum_app_version = "0.1.0"
         data_version.is_active = True
     db.flush()
     return data_version

@@ -14,6 +14,56 @@
         "summary": "Check Updates",
         "description": "Endpoint untuk mendapatkan metadata versi terbaru dari semua dataset yang aktif.\nAndroid akan membandingkan daftar ini dengan versi lokal SQLite-nya.",
         "operationId": "check_updates_api_v1_sync_check_get",
+        "parameters": [
+          {
+            "name": "dataset_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Name"
+            }
+          },
+          {
+            "name": "current_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Version"
+            }
+          },
+          {
+            "name": "current_checksum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Checksum"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -21,6 +71,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SyncCheckResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -56,14 +116,37 @@
           "Synchronization"
         ],
         "summary": "Get Sync Network",
-        "description": "Endpoint placeholder untuk mengunduh patch/update graf (node/edge OSM) terbaru.",
+        "description": "Mengunduh paket SQLite lengkap yang sudah diverifikasi terhadap metadata aktif.",
         "operationId": "get_sync_network_api_v1_sync_network_get",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -94,6 +177,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ObstructionReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/obstructions/confirmed": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Get Confirmed Obstructions",
+        "description": "Mengambil daftar edge_external_id yang statusnya CONFIRMED untuk event darurat aktif saat ini.\nJika tidak ada event aktif, mengembalikan list kosong.",
+        "operationId": "get_confirmed_obstructions_api_v1_reports_obstructions_confirmed_get",
+        "parameters": [
+          {
+            "name": "dataset_version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Confirmed Obstructions Api V1 Reports Obstructions Confirmed Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/confirmed": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Get Confirmed Obstructions",
+        "description": "Mengambil daftar edge_external_id yang statusnya CONFIRMED untuk event darurat aktif saat ini.\nJika tidak ada event aktif, mengembalikan list kosong.",
+        "operationId": "get_confirmed_obstructions_api_v1_reports_confirmed_get",
+        "parameters": [
+          {
+            "name": "dataset_version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Confirmed Obstructions Api V1 Reports Confirmed Get"
                 }
               }
             }
@@ -281,6 +472,22 @@
       "get": {
         "summary": "Read Root",
         "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Liveness Check",
+        "operationId": "liveness_check_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",

@@ -9,8 +9,11 @@ data class LocalDatasetManifest(
 data class RemoteDatasetVersion(
     val datasetName: String,
     val version: String,
+    val schemaVersion: String,
     val checksum: String,
+    val downloadUrl: String,
     val sizeBytes: Long?,
+    val minimumAppVersion: String?,
     val publishedAt: String,
 )
 
@@ -18,10 +21,18 @@ data class DatasetUpdateStatus(
     val local: LocalDatasetManifest,
     val latestVersions: List<RemoteDatasetVersion>,
     val checkedAtMillis: Long,
+    val serverReportsUpdate: Boolean = true,
 ) {
+    val networkVersion: RemoteDatasetVersion?
+        get() = latestVersions.firstOrNull { it.datasetName == "network" }
+
     val updateAvailable: Boolean
-        get() = latestVersions.any { remote ->
-            !remote.checksum.equals(local.checksum, ignoreCase = true)
+        get() = serverReportsUpdate &&
+            networkVersion?.checksum?.equals(local.checksum, ignoreCase = true) == false
+
+    val downloadableVersion: RemoteDatasetVersion?
+        get() = networkVersion?.takeIf {
+            updateAvailable && it.downloadUrl.isNotBlank() && it.sizeBytes != null
         }
 
     val latestVersionLabel: String

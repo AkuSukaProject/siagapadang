@@ -2,6 +2,8 @@ package com.akusukaproject.siagapadang
 
 import android.app.Application
 import android.util.Log
+import com.akusukaproject.siagapadang.data.local.DatasetPackageInstaller
+import com.akusukaproject.siagapadang.data.local.DatasetStorage
 import com.akusukaproject.siagapadang.data.local.SiagaPadangDatabase
 import com.akusukaproject.siagapadang.data.remote.AnonymousDeviceIdProvider
 import com.akusukaproject.siagapadang.data.remote.BmkgApiClient
@@ -17,14 +19,25 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.offline.OfflineManager
 
 class SiagaPadangApplication : Application() {
-    val database by lazy { SiagaPadangDatabase.getInstance(this) }
+    val datasetStorage by lazy { DatasetStorage(this) }
+    val database by lazy { SiagaPadangDatabase.getInstance(this, datasetStorage) }
     val evacuationRepository by lazy { EvacuationRepository(database.evacuationDao()) }
     val zoneRepository by lazy { ZoneRepository(database.zoneDao()) }
     val locationProvider by lazy { LocationProvider(this) }
     val compassProvider by lazy { CompassProvider(this) }
     val networkStatusProvider by lazy { NetworkStatusProvider(this) }
     val bmkgApiClient by lazy { BmkgApiClient(BuildConfig.BACKEND_BASE_URL) }
-    val dataUpdateApiClient by lazy { DataUpdateApiClient(this, BuildConfig.BACKEND_BASE_URL) }
+    val dataUpdateApiClient by lazy {
+        DataUpdateApiClient(BuildConfig.BACKEND_BASE_URL, datasetStorage)
+    }
+    val datasetPackageInstaller by lazy {
+        DatasetPackageInstaller(
+            context = this,
+            baseUrl = BuildConfig.BACKEND_BASE_URL,
+            appVersion = BuildConfig.VERSION_NAME,
+            storage = datasetStorage,
+        )
+    }
     val anonymousDeviceIdProvider by lazy { AnonymousDeviceIdProvider(this) }
     val emergencyApiClient by lazy { EmergencyApiClient(BuildConfig.BACKEND_BASE_URL, anonymousDeviceIdProvider) }
     val obstructionReportQueue by lazy { ObstructionReportQueue(this) }
@@ -32,6 +45,7 @@ class SiagaPadangApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         removeLegacyDatabaseCopy()
+        datasetStorage.cleanupInterruptedDownloads()
         MapLibre.getInstance(this)
         limitMapLibreAmbientCache()
     }

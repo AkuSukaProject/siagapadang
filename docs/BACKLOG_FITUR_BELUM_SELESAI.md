@@ -171,7 +171,12 @@ Kriteria selesai:
 
 ### P1-01 — Sinkronisasi Dataset yang Aman
 
-**Status:** Sebagian di backend; belum di Android.
+**Status:** Implementasi awal selesai pada branch `feat/p1-safe-dataset-sync`; pengujian update dengan dua versi dataset nyata masih diperlukan.
+
+Implementasi saat ini menyediakan paket SQLite lengkap, metadata versi/skema/ukuran/checksum,
+unduhan ke file sementara, validasi SHA-256 dan struktur SQLite, aktivasi pada pembukaan aplikasi
+berikutnya, serta rollback otomatis jika Room gagal membuka database baru. File unduhan yang
+terputus diabaikan dan dibersihkan tanpa mengganti data aktif.
 
 Pekerjaan:
 

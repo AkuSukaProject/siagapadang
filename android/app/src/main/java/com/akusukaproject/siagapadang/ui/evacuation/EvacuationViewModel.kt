@@ -196,12 +196,13 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun checkDataUpdates() {
-        if (mutableUiState.value.isCheckingDataUpdate) return
+        if (mutableUiState.value.isCheckingDataUpdate || mutableUiState.value.isInstallingDataUpdate) return
         viewModelScope.launch {
             mutableUiState.update { state ->
                 state.copy(
                     isCheckingDataUpdate = true,
                     dataUpdateErrorMessage = null,
+                    dataUpdateInstallMessage = null,
                 )
             }
             runCatching { app.dataUpdateApiClient.checkForUpdates() }
@@ -222,6 +223,41 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             isCheckingDataUpdate = false,
                             dataUpdateErrorMessage =
                                 "Versi terbaru belum dapat diperiksa. Data lokal tetap dapat digunakan.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun installDataUpdate() {
+        val remote = mutableUiState.value.datasetUpdateStatus?.downloadableVersion ?: return
+        if (mutableUiState.value.isInstallingDataUpdate) return
+        viewModelScope.launch {
+            mutableUiState.update { state ->
+                state.copy(
+                    isInstallingDataUpdate = true,
+                    dataUpdateErrorMessage = null,
+                    dataUpdateInstallMessage = "Mengunduh dan memeriksa paket data…",
+                )
+            }
+            runCatching { app.datasetPackageInstaller.downloadAndStage(remote) }
+                .onSuccess {
+                    mutableUiState.update { state ->
+                        state.copy(
+                            isInstallingDataUpdate = false,
+                            dataUpdateInstallMessage =
+                                "Pembaruan telah diverifikasi. Tutup dan buka kembali aplikasi untuk mengaktifkannya.",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(LOG_TAG, "Paket dataset gagal dipasang", error)
+                    mutableUiState.update { state ->
+                        state.copy(
+                            isInstallingDataUpdate = false,
+                            dataUpdateErrorMessage =
+                                error.message ?: "Paket pembaruan gagal dipasang. Data lama tetap digunakan.",
+                            dataUpdateInstallMessage = null,
                         )
                     }
                 }

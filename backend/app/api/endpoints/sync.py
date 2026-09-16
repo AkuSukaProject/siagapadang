@@ -1,16 +1,28 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.domain import DataVersion, EvacuationPoint, InundationZone, SafeZone
 from app.schemas.sync import SyncCheckResponse, SyncDataResponse, DataVersionBase
+from app.services.dataset_packages import (
+    configured_package_path,
+    remote_version_is_newer,
+    verify_package,
+)
 import json
+from urllib.parse import quote
 from typing import List
 
 router = APIRouter()
 
 @router.get("/check", response_model=SyncCheckResponse)
-def check_updates(db: Session = Depends(get_db)):
+def check_updates(
+    dataset_name: str | None = Query(default=None),
+    current_version: str | None = Query(default=None),
+    current_checksum: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     """
     Endpoint untuk mendapatkan metadata versi terbaru dari semua dataset yang aktif.
     Android akan membandingkan daftar ini dengan versi lokal SQLite-nya.
@@ -21,14 +33,47 @@ def check_updates(db: Session = Depends(get_db)):
         func.max(DataVersion.id).label('max_id')
     ).filter(DataVersion.is_active == True).group_by(DataVersion.dataset_name).subquery()
     
-    latest_versions = db.query(DataVersion).join(
+    query = db.query(DataVersion).join(
         subquery, 
         (DataVersion.dataset_name == subquery.c.dataset_name) & (DataVersion.id == subquery.c.max_id)
-    ).all()
+    )
+    if dataset_name:
+        query = query.filter(DataVersion.dataset_name == dataset_name)
+    latest_versions = query.all()
+
+    versions = []
+    for version in latest_versions:
+        item = DataVersionBase.model_validate(version)
+        if version.dataset_name == "network":
+            item = item.model_copy(
+                update={
+                    "download_url": (
+                        f"/api/v1/sync/network?version={quote(version.version, safe='')}"
+                    ),
+                },
+            )
+        versions.append(item)
+
+    if current_checksum:
+        has_update = any(
+            version.checksum.casefold() != current_checksum.casefold()
+            and (
+                current_version is None
+                or remote_version_is_newer(version.version, current_version)
+            )
+            for version in latest_versions
+        )
+    elif current_version:
+        has_update = any(
+            remote_version_is_newer(version.version, current_version)
+            for version in latest_versions
+        )
+    else:
+        has_update = bool(latest_versions)
     
     return SyncCheckResponse(
-        has_update=len(latest_versions) > 0,
-        latest_versions=[DataVersionBase.model_validate(v) for v in latest_versions],
+        has_update=has_update,
+        latest_versions=versions,
         message="Daftar versi dataset terbaru berhasil diambil."
     )
 
@@ -87,9 +132,43 @@ def get_sync_shelters(db: Session = Depends(get_db)):
         data=feature_collection
     )
     
-@router.get("/network")
-def get_sync_network():
+@router.get("/network", response_class=FileResponse)
+def get_sync_network(
+    version: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     """
-    Endpoint placeholder untuk mengunduh patch/update graf (node/edge OSM) terbaru.
+    Mengunduh paket SQLite lengkap yang sudah diverifikasi terhadap metadata aktif.
     """
-    return {"message": "Network graph patch endpoint (Not implemented yet)"}
+    active = db.query(DataVersion).filter_by(
+        dataset_name="network",
+        is_active=True,
+    ).order_by(DataVersion.id.desc()).first()
+    if active is None:
+        raise HTTPException(status_code=404, detail="Versi dataset jaringan belum tersedia.")
+    if version is not None and version != active.version:
+        raise HTTPException(status_code=409, detail="Versi dataset yang diminta sudah tidak aktif.")
+
+    package_path = configured_package_path()
+    try:
+        verify_package(package_path, active.size_bytes, active.checksum)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail="Paket dataset belum tersedia di server.") from error
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    safe_version = "".join(
+        character if character.isalnum() or character in ".-_" else "_"
+        for character in active.version
+    )
+    return FileResponse(
+        path=package_path,
+        media_type="application/vnd.sqlite3",
+        filename=f"siaga-padang-{safe_version}.db",
+        headers={
+            "ETag": f'"sha256-{active.checksum}"',
+            "X-Dataset-Version": active.version,
+            "X-Checksum-SHA256": active.checksum,
+            "Cache-Control": "public, max-age=3600",
+        },
+    )

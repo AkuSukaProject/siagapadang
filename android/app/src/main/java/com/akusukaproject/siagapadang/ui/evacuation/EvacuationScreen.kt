@@ -152,6 +152,7 @@ fun EvacuationScreen(
         onRetryRoute = viewModel::retryRoute,
         onRefreshBmkgStatus = viewModel::refreshBmkgStatus,
         onCheckDataUpdates = viewModel::checkDataUpdates,
+        onInstallDataUpdate = viewModel::installDataUpdate,
         onSelectAlternative = viewModel::selectAlternativeDestination,
         onMapViewportChanged = viewModel::onMapViewportChanged,
         onPerformCheckin = viewModel::performShelterCheckin,
@@ -170,6 +171,7 @@ private fun EvacuationContent(
     onRetryRoute: () -> Unit,
     onRefreshBmkgStatus: () -> Unit,
     onCheckDataUpdates: () -> Unit,
+    onInstallDataUpdate: () -> Unit,
     onSelectAlternative: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
     onPerformCheckin: () -> Unit,
@@ -441,6 +443,7 @@ private fun EvacuationContent(
             state = state,
             onDismiss = { showDataUpdateDialog = false },
             onCheckUpdates = onCheckDataUpdates,
+            onInstallUpdate = onInstallDataUpdate,
         )
     }
 
@@ -507,25 +510,32 @@ private fun DataUpdateDialog(
     state: EvacuationUiState,
     onDismiss: () -> Unit,
     onCheckUpdates: () -> Unit,
+    onInstallUpdate: () -> Unit,
 ) {
     val local = state.localDatasetManifest
     val update = state.datasetUpdateStatus
     val statusColor = when {
         state.dataUpdateErrorMessage != null -> STATUS_ERROR_COLOR
+        state.dataUpdateInstallMessage != null -> SiagaNextGreen
         update?.updateAvailable == true -> SiagaWarning
         update != null -> SiagaNextGreen
         else -> SiagaNavy.copy(alpha = 0.14f)
     }
     val statusTitle = when {
+        state.isInstallingDataUpdate -> "Memasang pembaruan…"
         state.isCheckingDataUpdate -> "Memeriksa versi terbaru…"
+        state.dataUpdateErrorMessage != null && update?.updateAvailable == true -> "Pembaruan gagal"
         state.dataUpdateErrorMessage != null -> "Pemeriksaan belum berhasil"
+        state.dataUpdateInstallMessage != null -> "Pembaruan siap diaktifkan"
         update?.updateAvailable == true -> "Pembaruan tersedia"
         update != null -> "Data sudah terbaru"
         else -> "Belum diperiksa"
     }
     val statusMessage = when {
+        state.isInstallingDataUpdate -> "Mengunduh, memeriksa checksum, dan memvalidasi database."
         state.isCheckingDataUpdate -> "Menghubungi backend SIAGA PADANG."
         state.dataUpdateErrorMessage != null -> state.dataUpdateErrorMessage
+        state.dataUpdateInstallMessage != null -> state.dataUpdateInstallMessage
         update?.updateAvailable == true ->
             "Versi ${update.latestVersionLabel} tersedia. Data lokal tetap digunakan sampai pembaruan diterapkan."
         update != null -> "Versi perangkat sesuai dengan versi aktif di server."
@@ -623,8 +633,14 @@ private fun DataUpdateDialog(
                 }
 
                 Button(
-                    onClick = onCheckUpdates,
-                    enabled = !state.isCheckingDataUpdate,
+                    onClick = if (update?.downloadableVersion != null) {
+                        onInstallUpdate
+                    } else {
+                        onCheckUpdates
+                    },
+                    enabled = !state.isCheckingDataUpdate &&
+                        !state.isInstallingDataUpdate &&
+                        state.dataUpdateInstallMessage == null,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = SiagaNavy,
                         contentColor = SiagaCream,
@@ -634,19 +650,26 @@ private fun DataUpdateDialog(
                         .fillMaxWidth()
                         .height(52.dp),
                 ) {
-                    if (state.isCheckingDataUpdate) {
+                    if (state.isCheckingDataUpdate || state.isInstallingDataUpdate) {
                         CircularProgressIndicator(
                             color = SiagaCream,
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(20.dp),
                         )
                     } else {
-                        Text("Periksa pembaruan", fontWeight = FontWeight.Bold)
+                        Text(
+                            when {
+                                state.dataUpdateInstallMessage != null -> "Buka kembali aplikasi"
+                                update?.downloadableVersion != null -> "Unduh dan pasang pembaruan"
+                                else -> "Periksa pembaruan"
+                            },
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
 
                 Text(
-                    text = "Jika pemeriksaan gagal, navigasi tetap memakai data lokal yang tersedia.",
+                    text = "Jika unduhan atau pemeriksaan gagal, navigasi tetap memakai data lokal yang tersedia.",
                     color = SiagaNavy.copy(alpha = 0.62f),
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
