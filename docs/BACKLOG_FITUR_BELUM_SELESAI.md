@@ -242,7 +242,13 @@ Kriteria selesai:
 
 ### P1-04 — Fallback Setelah Semua Rute Alternatif Habis
 
-**Status:** Belum.
+**Status:** Implementasi selesai pada branch `feat/p1-route-fallback`; validasi tampilan dan GPS pada perangkat masih ditunda.
+
+Rute utama dan dua alternatif tetap dapat ditandai terhalang. Setelah rute ketiga ditolak,
+aplikasi menyembunyikan seluruh garis rute yang sudah ditolak dan menampilkan orientasi terakhir
+berupa arah kompas serta jarak lurus menuju tujuan. Nilai tersebut diperbarui ketika posisi GPS
+berubah. Tampilan menyatakan dengan jelas bahwa orientasi itu bukan rute aman atau rute yang telah
+diperiksa serta tetap mengarahkan pengguna menjauhi pantai dan mengikuti petugas atau rambu.
 
 Pekerjaan:
 

@@ -90,6 +90,8 @@ import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
+import com.akusukaproject.siagapadang.domain.BearingCalculator
+import com.akusukaproject.siagapadang.domain.DirectOrientation
 import com.akusukaproject.siagapadang.domain.RemainingRouteCalculator
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import com.akusukaproject.siagapadang.ui.map.OfflineMap
@@ -322,18 +324,33 @@ private fun EvacuationContent(
 
         val route = state.route
         if (route != null) {
-            NavigationInstructionCard(
-                route = route,
-                guidance = state.guidance,
-                scale = scale,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = scaled(53f))
-                    .graphicsLayer(
-                        alpha = collapsedContentAlpha,
-                        translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
-                    ),
-            )
+            if (state.directOrientation != null) {
+                DirectOrientationCard(
+                    orientation = state.directOrientation,
+                    deviceHeadingDegrees = state.deviceHeadingDegrees,
+                    scale = scale,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = scaled(53f))
+                        .graphicsLayer(
+                            alpha = collapsedContentAlpha,
+                            translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
+                        ),
+                )
+            } else {
+                NavigationInstructionCard(
+                    route = route,
+                    guidance = state.guidance,
+                    scale = scale,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = scaled(53f))
+                        .graphicsLayer(
+                            alpha = collapsedContentAlpha,
+                            translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
+                        ),
+                )
+            }
 
             EvacuationTiming(
                 route = route,
@@ -346,14 +363,24 @@ private fun EvacuationContent(
                     .graphicsLayer(alpha = collapsedContentAlpha),
             )
 
-            NextInstructionStrip(
-                guidance = state.guidance,
-                scale = scale,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(y = -(mapHeight + scaled(22f)))
-                    .graphicsLayer(alpha = collapsedContentAlpha),
-            )
+            if (state.directOrientation != null) {
+                DirectOrientationWarning(
+                    scale = scale,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = -(mapHeight + scaled(22f)))
+                        .graphicsLayer(alpha = collapsedContentAlpha),
+                )
+            } else {
+                NextInstructionStrip(
+                    guidance = state.guidance,
+                    scale = scale,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = -(mapHeight + scaled(22f)))
+                        .graphicsLayer(alpha = collapsedContentAlpha),
+                )
+            }
         } else {
             RoutePreparationState(
                 state = state,
@@ -406,6 +433,7 @@ private fun EvacuationContent(
 
     if (showBlockedRouteDialog) {
         BlockedRouteDialog(
+            hasAlternativeRoute = state.remainingAlternativeCount > 0,
             onDismiss = { showBlockedRouteDialog = false },
             onConfirm = {
                 showBlockedRouteDialog = false
@@ -1240,6 +1268,97 @@ private fun NavigationInstructionCard(
 }
 
 @Composable
+private fun DirectOrientationCard(
+    orientation: DirectOrientation,
+    deviceHeadingDegrees: Float?,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    val arrowRotation = deviceHeadingDegrees?.let { heading ->
+        BearingCalculator.relativeRotationDegrees(
+            targetBearing = orientation.bearingDegrees,
+            deviceHeading = heading.toDouble(),
+        )
+    } ?: orientation.bearingDegrees.toFloat()
+    val shape = RoundedCornerShape((18f * scale).dp)
+    Surface(
+        color = SiagaCream,
+        contentColor = SiagaNavy,
+        shape = shape,
+        border = BorderStroke(2.dp, SiagaWarning),
+        modifier = modifier
+            .size(width = (213f * scale).dp, height = (239f * scale).dp)
+            .shadow(4.dp, shape),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = (10f * scale).dp, vertical = (12f * scale).dp),
+        ) {
+            Text(
+                text = "Orientasi terakhir",
+                color = SiagaRust,
+                fontSize = (15f * scale).sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+            Image(
+                painter = painterResource(R.drawable.ic_figma_straight_arrow),
+                contentDescription = "Arah lurus ${cardinalDirection(orientation.bearingDegrees)}",
+                colorFilter = ColorFilter.tint(SiagaNavy),
+                modifier = Modifier
+                    .size((82f * scale).dp)
+                    .graphicsLayer(rotationZ = arrowRotation),
+            )
+            Text(
+                text = cardinalDirection(orientation.bearingDegrees),
+                color = SiagaNavy,
+                fontSize = (20f * scale).sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Jarak lurus ${formatDistance(orientation.distanceMeters)}",
+                color = SiagaNavy,
+                fontSize = (13f * scale).sp,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = orientation.destinationName,
+                color = SiagaNavy,
+                fontSize = (12f * scale).sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DirectOrientationWarning(
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaWarning,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((12f * scale).dp),
+        border = BorderStroke(1.dp, SiagaNavy),
+        modifier = modifier.size(width = (314f * scale).dp, height = (72f * scale).dp),
+    ) {
+        Text(
+            text = "Bukan rute aman atau rute yang telah diperiksa. Jauhi arah pantai dan ikuti petugas atau rambu evakuasi.",
+            fontSize = (11f * scale).sp,
+            lineHeight = (14f * scale).sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = (12f * scale).dp, vertical = (9f * scale).dp),
+        )
+    }
+}
+
+@Composable
 private fun EvacuationTiming(
     route: EvacuationRoute,
     remainingSeconds: Int,
@@ -1559,7 +1678,11 @@ private fun EvacuationMapPanel(
     ) {
         val isApproachingRoute = state.guidance?.isApproachingRoute == true
         val nearestRouteCoordinate = state.guidance?.nearestRouteCoordinate
-        val routeCoordinates = state.route?.coordinates.orEmpty()
+        val routeCoordinates = if (state.directOrientation == null) {
+            state.route?.coordinates.orEmpty()
+        } else {
+            emptyList()
+        }
         val remainingRouteCoordinates = remember(
             routeCoordinates,
             state.guidance?.nearestRouteIndex,
@@ -1577,6 +1700,7 @@ private fun EvacuationMapPanel(
             tsunamiZoneOverlay = state.tsunamiZoneOverlay,
             routeCoordinates = remainingRouteCoordinates,
             approachRouteCoordinates = if (
+                state.directOrientation == null &&
                 isApproachingRoute && state.currentLocation != null && nearestRouteCoordinate != null
             ) {
                 listOf(state.currentLocation, nearestRouteCoordinate)
@@ -1584,11 +1708,16 @@ private fun EvacuationMapPanel(
                 emptyList()
             },
             approachTargetLocation = if (isApproachingRoute) nearestRouteCoordinate else null,
-            previousRouteCoordinates = state.previousRoutes.map { route -> route.coordinates },
+            previousRouteCoordinates = if (state.directOrientation == null) {
+                state.previousRoutes.map { route -> route.coordinates }
+            } else {
+                emptyList()
+            },
             currentLocation = state.currentLocation,
             destinationLocation = state.route?.destinationCoordinate,
             destinationName = state.route?.destinationName,
-            destinationDistanceLabel = state.guidance?.remainingDistanceMeters?.let(::formatDistance),
+            destinationDistanceLabel = state.directOrientation?.distanceMeters?.let(::formatDistance)
+                ?: state.guidance?.remainingDistanceMeters?.let(::formatDistance),
             deviceHeadingDegrees = state.deviceHeadingDegrees,
             followUserLocation = followUserLocation,
             recenterRequest = recenterRequest,
@@ -1647,7 +1776,7 @@ private fun EvacuationMapPanel(
             }
         }
 
-        state.route?.let { route ->
+        state.route?.takeIf { state.directOrientation == null }?.let { route ->
             ExpandedMapHeader(
                 route = route,
                 guidance = state.guidance,
@@ -1714,10 +1843,11 @@ private fun EvacuationMapPanel(
         }
 
         BlockedRouteButton(
-            enabled = state.canSelectAlternative,
+            enabled = state.canReportBlockedRoute,
             isLoading = state.isLoadingRoute,
             hasArrived = state.hasArrived,
             arrivalReason = state.arrivalReason,
+            isDirectOrientationActive = state.directOrientation != null,
             onClick = onBlockedRouteClick,
             scale = scale,
             modifier = Modifier
@@ -2486,6 +2616,7 @@ private fun BlockedRouteButton(
     isLoading: Boolean,
     hasArrived: Boolean,
     arrivalReason: EvacuationArrivalReason?,
+    isDirectOrientationActive: Boolean,
     onClick: () -> Unit,
     scale: Float,
     modifier: Modifier = Modifier,
@@ -2494,6 +2625,7 @@ private fun BlockedRouteButton(
         hasArrived && arrivalReason == EvacuationArrivalReason.OUTSIDE_INUNDATION_ZONE ->
             "Di luar zona rendaman"
         hasArrived -> "Anda telah sampai di TES"
+        isDirectOrientationActive -> "Orientasi terakhir aktif"
         isLoading -> "Mencari alternatif tujuan…"
         enabled -> "Jalur terhalang?"
         else -> "Alternatif tujuan tidak tersedia"
@@ -2642,6 +2774,7 @@ private fun ActionButton(text: String, onClick: () -> Unit) {
 
 @Composable
 private fun BlockedRouteDialog(
+    hasAlternativeRoute: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -2656,7 +2789,7 @@ private fun BlockedRouteDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 6.dp)
-                .height(250.dp),
+                .height(if (hasAlternativeRoute) 250.dp else 290.dp),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 IconButton(
@@ -2684,7 +2817,11 @@ private fun BlockedRouteDialog(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Laporkan jalur terhalang?",
+                        text = if (hasAlternativeRoute) {
+                            "Laporkan jalur terhalang?"
+                        } else {
+                            "Rute terakhir terhalang?"
+                        },
                         color = Color.Black,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
@@ -2692,7 +2829,11 @@ private fun BlockedRouteDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Sistem akan memilih rute offline yang paling cepat menjauh dari jalur ini.",
+                        text = if (hasAlternativeRoute) {
+                            "Sistem akan memilih rute offline yang paling cepat menjauh dari jalur ini."
+                        } else {
+                            "Tidak ada rute jalan lain yang dapat diverifikasi. Sistem hanya akan menampilkan arah dan jarak lurus sebagai orientasi terakhir."
+                        },
                         color = Color.DarkGray,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
@@ -2731,7 +2872,11 @@ private fun BlockedRouteDialog(
                             .height(48.dp),
                     ) {
                         Text(
-                            text = "Ya, cari alternatif",
+                            text = if (hasAlternativeRoute) {
+                                "Ya, cari alternatif"
+                            } else {
+                                "Tampilkan orientasi"
+                            },
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                         )
@@ -3206,6 +3351,22 @@ private fun estimatedDistanceMeters(route: EvacuationRoute): Int =
 private fun formatDistance(distanceMeters: Int): String = when {
     distanceMeters < 1_000 -> "${(distanceMeters / 10) * 10} m"
     else -> "%.1f km".format(distanceMeters / 1_000.0)
+}
+
+private fun cardinalDirection(bearingDegrees: Double): String {
+    val directions = listOf(
+        "Utara",
+        "Timur Laut",
+        "Timur",
+        "Tenggara",
+        "Selatan",
+        "Barat Daya",
+        "Barat",
+        "Barat Laut",
+    )
+    val normalizedBearing = (bearingDegrees % 360.0 + 360.0) % 360.0
+    val index = ((normalizedBearing + 22.5) / 45.0).toInt() % directions.size
+    return "${directions[index]} (${normalizedBearing.toInt()}°)"
 }
 
 private fun maneuverDistanceMessage(

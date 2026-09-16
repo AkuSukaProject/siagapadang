@@ -10,6 +10,7 @@ import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
 import com.akusukaproject.siagapadang.data.model.TsunamiZoneOverlay
 import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseDto
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
+import com.akusukaproject.siagapadang.domain.DirectOrientation
 
 data class EvacuationUiState(
     val hasLocationPermission: Boolean = false,
@@ -39,6 +40,7 @@ data class EvacuationUiState(
     val remainingAlternativeCount: Int = MAX_ALTERNATIVE_COUNT,
     val alternativeRouteVersion: Int = 0,
     val alternativeRouteMessage: String? = null,
+    val directOrientation: DirectOrientation? = null,
     val hasArrived: Boolean = false,
     val arrivalReason: EvacuationArrivalReason? = null,
     val arrivalDistanceMeters: Int? = null,
@@ -75,6 +77,9 @@ data class EvacuationUiState(
 
     val canSelectAlternative: Boolean
         get() = route != null && remainingAlternativeCount > 0 && !isLoadingRoute && !hasArrived
+
+    val canReportBlockedRoute: Boolean
+        get() = route != null && !isLoadingRoute && !hasArrived && directOrientation == null
 
     companion object {
         const val EVACUATION_WINDOW_SECONDS = 20 * 60

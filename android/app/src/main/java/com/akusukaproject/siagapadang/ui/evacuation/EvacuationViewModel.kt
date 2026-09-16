@@ -20,6 +20,7 @@ import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
 import kotlinx.coroutines.Dispatchers
 import com.akusukaproject.siagapadang.domain.ActiveEdgeFinder
 import com.akusukaproject.siagapadang.domain.ArrivalConfirmationTracker
+import com.akusukaproject.siagapadang.domain.DirectOrientationCalculator
 import com.akusukaproject.siagapadang.domain.ManeuverGuidance
 import com.akusukaproject.siagapadang.domain.ManeuverType
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
@@ -271,13 +272,51 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         val currentState = mutableUiState.value
         val currentRoute = currentState.route ?: return
         val currentLocation = currentState.currentLocation ?: return
-        if (!currentState.canSelectAlternative || routeJob?.isActive == true) return
+        if (!currentState.canReportBlockedRoute || routeJob?.isActive == true) return
 
         val blockedEdgeId = currentState.activeEdgeId
         val updatedBlockedEdgeIds = if (blockedEdgeId != null) {
             currentState.blockedEdgeIds + blockedEdgeId
         } else {
             currentState.blockedEdgeIds
+        }
+
+        if (currentState.remainingAlternativeCount <= 0) {
+            val directOrientation = DirectOrientationCalculator.calculate(
+                currentLocation = currentLocation,
+                destinationName = currentRoute.destinationName,
+                destinationCoordinate = currentRoute.destinationCoordinate,
+                routeCoordinates = currentRoute.coordinates,
+            )
+            if (directOrientation == null) {
+                mutableUiState.update { state ->
+                    state.copy(
+                        errorMessage = "Tidak ada rute jalan atau titik tujuan yang dapat digunakan untuk orientasi.",
+                    )
+                }
+                return
+            }
+            rejectedDestinationNames += currentRoute.destinationName
+            resetRouteProgress()
+            mutableUiState.update { state ->
+                state.copy(
+                    previousRoutes = (state.previousRoutes + currentRoute)
+                        .distinctBy { previousRoute -> previousRoute.destinationName },
+                    directOrientation = directOrientation,
+                    guidance = null,
+                    activeEdgeId = null,
+                    alternativeRouteVersion = state.alternativeRouteVersion + 1,
+                    alternativeRouteMessage = "Semua rute jalan telah ditolak. Orientasi garis lurus diaktifkan.",
+                    blockedEdgeIds = updatedBlockedEdgeIds,
+                    errorMessage = null,
+                )
+            }
+            queueObstructionReport(
+                blockedEdgeId = blockedEdgeId,
+                location = currentLocation,
+                message = "Rute terakhir ditandai terhalang. Orientasi terakhir ditampilkan.",
+            )
+            return
         }
 
         routeJob = viewModelScope.launch {
@@ -308,6 +347,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                                 previousRoute = currentRoute,
                                 newRoute = route,
                             ),
+                            directOrientation = null,
                             hasArrived = false,
                             arrivalReason = null,
                             arrivalDistanceMeters = null,
@@ -319,23 +359,11 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
 
-                if (blockedEdgeId != null) {
-                    val report = ObstructionReportRequestDto(
-                        latitude = currentLocation.latitude,
-                        longitude = currentLocation.longitude,
-                        datasetVersionId = 1,
-                        edgeExternalId = blockedEdgeId.toString(),
-                        description = "Jalur terhalang dilaporkan warga via aplikasi",
-                    )
-                    app.obstructionReportQueue.enqueue(report)
-                    mutableUiState.update { state ->
-                        state.copy(
-                            pendingObstructionCount = app.obstructionReportQueue.getPendingReports().size,
-                            obstructionReportMessage = "Rute dialihkan. Laporan jalan terhalang sedang diproses...",
-                        )
-                    }
-                    flushPendingObstructionReports()
-                }
+                queueObstructionReport(
+                    blockedEdgeId = blockedEdgeId,
+                    location = currentLocation,
+                    message = "Rute dialihkan. Laporan jalan terhalang sedang diproses...",
+                )
             }.onFailure { error ->
                 mutableUiState.update {
                     it.copy(
@@ -345,6 +373,32 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
+
+    private fun queueObstructionReport(
+        blockedEdgeId: Long?,
+        location: GeoCoordinate,
+        message: String,
+    ) {
+        if (blockedEdgeId == null) {
+            mutableUiState.update { state -> state.copy(obstructionReportMessage = message) }
+            return
+        }
+        val report = ObstructionReportRequestDto(
+            latitude = location.latitude,
+            longitude = location.longitude,
+            datasetVersionId = 1,
+            edgeExternalId = blockedEdgeId.toString(),
+            description = "Jalur terhalang dilaporkan warga via aplikasi",
+        )
+        app.obstructionReportQueue.enqueue(report)
+        mutableUiState.update { state ->
+            state.copy(
+                pendingObstructionCount = app.obstructionReportQueue.getPendingReports().size,
+                obstructionReportMessage = message,
+            )
+        }
+        flushPendingObstructionReports()
     }
 
     fun flushPendingObstructionReports() {
@@ -619,6 +673,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                             isLoadingRoute = false,
                             remainingAlternativeCount = EvacuationUiState.MAX_ALTERNATIVE_COUNT,
                             alternativeRouteMessage = null,
+                            directOrientation = null,
                             hasArrived = false,
                             arrivalReason = null,
                             arrivalDistanceMeters = null,
@@ -707,6 +762,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 hasArrived = true,
                 arrivalReason = EvacuationArrivalReason.OUTSIDE_INUNDATION_ZONE,
                 arrivalDistanceMeters = null,
+                directOrientation = null,
                 guidance = outsideZoneArrivalGuidance(),
             )
         }
@@ -774,7 +830,21 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun withGuidance(state: EvacuationUiState): EvacuationUiState {
         val location = state.currentLocation ?: return state
-        val routeCoordinates = state.route?.coordinates ?: return state
+        val route = state.route ?: return state
+        if (state.directOrientation != null) {
+            val directOrientation = DirectOrientationCalculator.calculate(
+                currentLocation = location,
+                destinationName = route.destinationName,
+                destinationCoordinate = route.destinationCoordinate,
+                routeCoordinates = route.coordinates,
+            )
+            return state.copy(
+                directOrientation = directOrientation ?: state.directOrientation,
+                guidance = null,
+                activeEdgeId = null,
+            )
+        }
+        val routeCoordinates = route.coordinates
         val guidance = RouteGuidanceCalculator.calculate(
             currentLocation = location,
             routeCoordinates = routeCoordinates,
@@ -796,7 +866,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
-        val activeEdgeId = state.route.let { currentRoute ->
+        val activeEdgeId = route.let { currentRoute ->
             ActiveEdgeFinder.findActiveEdgeId(
                 location = location,
                 route = currentRoute,
@@ -831,6 +901,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 hasArrived = true,
                 arrivalReason = EvacuationArrivalReason.EVACUATION_POINT,
                 arrivalDistanceMeters = distanceMeters,
+                directOrientation = null,
                 guidance = arrivalGuidance(distanceMeters),
             )
         } else {

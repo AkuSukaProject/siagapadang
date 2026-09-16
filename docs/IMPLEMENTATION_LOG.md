@@ -35,3 +35,21 @@ Dokumen ini mencatat perubahan pengembangan, hasil pemeriksaan, dan validasi yan
   di luar zona, tiga konfirmasi keluar, pembacaan batas/dalam, dan akurasi GPS buruk.
 - **Validasi ditunda atas arahan pengguna:** simulasi lokasi pada perangkat, pengujian batas poligon
   secara end-to-end, dan pemeriksaan tampilan dialog di berbagai ukuran layar.
+
+## 16 September 2026 — P1-04 Fallback Setelah Semua Rute Alternatif Habis
+
+- Branch: `feat/p1-route-fallback`
+- Tombol pelaporan jalur tetap tersedia pada rute ketiga agar pengguna dapat menyatakan bahwa
+  seluruh rute utama dan alternatif telah terhalang.
+- Setelah rute terakhir ditolak, aplikasi menghentikan panduan belokan dan menyembunyikan garis
+  rute aktif maupun riwayat rute yang sudah ditolak dari peta.
+- Aplikasi menampilkan orientasi terakhir berupa mata angin, derajat kompas, dan jarak lurus ke
+  tujuan. Arah relatif diperbarui terhadap heading perangkat dan jarak diperbarui dari lokasi GPS.
+- Jika koordinat resmi tujuan tidak tersedia, ujung geometri rute dipakai sebagai sasaran orientasi.
+- Peringatan pada layar menyatakan bahwa arah lurus bukan rute aman atau rute yang telah diperiksa,
+  serta mengarahkan pengguna menjauhi pantai dan mengikuti petugas atau rambu evakuasi.
+- Laporan hambatan terakhir tetap masuk antrean luring dan akan dikirim ketika backend tersedia.
+- Unit test `:android:app:testDebugUnitTest` lulus, termasuk kalkulasi arah/jarak dan fallback ke
+  koordinat terakhir geometri rute.
+- **Validasi ditunda atas arahan pengguna:** alur penolakan tiga rute pada perangkat, perubahan arah
+  terhadap kompas/GPS nyata, dan pemeriksaan visual pada berbagai ukuran layar.
