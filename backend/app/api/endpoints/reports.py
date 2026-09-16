@@ -80,8 +80,14 @@ def report_obstruction(
                 Obstruction.edge_external_id == report.edge_external_id
             ).first()
             
-    if obstruction and obstruction.status == ObstructionStatus.EXPIRED:
-         raise HTTPException(
+    if not obstruction:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal membuat atau memproses entitas hambatan jalan."
+        )
+
+    if obstruction.status == ObstructionStatus.EXPIRED:
+        raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hambatan ini sudah ditandai kadaluarsa/selesai."
         )

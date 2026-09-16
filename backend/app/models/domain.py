@@ -1,5 +1,7 @@
+from typing import Optional
+from datetime import datetime
 from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum, ForeignKey, UniqueConstraint, Index
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 import enum
@@ -136,14 +138,14 @@ class Obstruction(Base):
     """Data Jalan Terhalang yang sudah digregasi"""
     __tablename__ = "obstructions"
     
-    id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("emergency_events.id"), nullable=False, index=True)
-    dataset_version_id = Column(Integer, ForeignKey("data_versions.id"), nullable=False, index=True)
-    edge_external_id = Column(String, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("emergency_events.id"), nullable=False, index=True)
+    dataset_version_id: Mapped[int] = mapped_column(ForeignKey("data_versions.id"), nullable=False, index=True)
+    edge_external_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     
-    status = Column(Enum(ObstructionStatus), default=ObstructionStatus.PENDING)
-    confirmed_at = Column(DateTime(timezone=True), nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
+    status: Mapped[ObstructionStatus] = mapped_column(Enum(ObstructionStatus), default=ObstructionStatus.PENDING)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     __table_args__ = (
         UniqueConstraint('event_id', 'dataset_version_id', 'edge_external_id', name='uq_event_dataset_edge'),
