@@ -26,8 +26,8 @@ jobs:
           
           echo "Clearing old files in Space..."
           cd hf-space
-          # Hapus semua file kecuali folder .git agar history terjaga
-          find . -maxdepth 1 ! -name '.git' ! -name '.' ! -name '..' -exec rm -rf {} +
+          # Hapus semua file kecuali folder .git dan README.md agar history & konfigurasi terjaga
+          find . -maxdepth 1 ! -name '.git' ! -name 'README.md' ! -name '.' ! -name '..' -exec rm -rf {} +
           cd ..
           
           echo "Copying backend files to Space..."
