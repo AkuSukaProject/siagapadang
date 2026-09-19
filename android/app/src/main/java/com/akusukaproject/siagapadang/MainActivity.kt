@@ -11,6 +11,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.akusukaproject.siagapadang.ui.evacuation.EvacuationScreen
 import com.akusukaproject.siagapadang.ui.familyplan.FamilyPlanScreen
 import com.akusukaproject.siagapadang.ui.menu.MenuScreen
+import com.akusukaproject.siagapadang.ui.onboarding.OnboardingScreen
 import com.akusukaproject.siagapadang.ui.facilities.FacilitiesScreen
 import com.akusukaproject.siagapadang.ui.info.AboutScreen
 import com.akusukaproject.siagapadang.ui.info.GuideScreen
@@ -32,9 +33,24 @@ class MainActivity : ComponentActivity() {
             intent.getBooleanExtra(EXTRA_SHOW_ARRIVAL_EVIDENCE, false)
         setContent {
             SiagaPadangTheme {
-                var screen by rememberSaveable { mutableStateOf(AppScreen.EVACUATION) }
+                val settings = (application as SiagaPadangApplication).settingsRepository
+                var screen by rememberSaveable {
+                    mutableStateOf(
+                        if (settings.hasCompletedOnboarding || showArrivalEvidence) AppScreen.EVACUATION else AppScreen.ONBOARDING,
+                    )
+                }
                 var aboutReturn by rememberSaveable { mutableStateOf(AppScreen.MENU) }
                 when (screen) {
+                    AppScreen.ONBOARDING -> OnboardingScreen(
+                        onFinish = {
+                            settings.hasCompletedOnboarding = true
+                            screen = AppScreen.EVACUATION
+                        },
+                        onFinishToFamilyPlan = {
+                            settings.hasCompletedOnboarding = true
+                            screen = AppScreen.FAMILY_PLAN
+                        },
+                    )
                     AppScreen.EVACUATION -> EvacuationScreen(
                         showArrivalEvidence = showArrivalEvidence,
                         evidenceDestinationName = EVIDENCE_DESTINATION_NAME,
@@ -69,7 +85,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Layar evakuasi selalu menjadi layar awal; halaman lain adalah persiapan masa tenang. */
-    private enum class AppScreen { EVACUATION, MENU, FAMILY_PLAN, FACILITIES, GUIDE, SETTINGS, ABOUT }
+    private enum class AppScreen { ONBOARDING, EVACUATION, MENU, FAMILY_PLAN, FACILITIES, GUIDE, SETTINGS, ABOUT }
 
     private companion object {
         const val EXTRA_SHOW_ARRIVAL_EVIDENCE = "show_arrival_evidence"
