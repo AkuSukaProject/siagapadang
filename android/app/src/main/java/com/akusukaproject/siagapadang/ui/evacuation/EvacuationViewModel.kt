@@ -1066,6 +1066,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun maybeVibrateUpcomingManeuver() {
+        if (!app.settingsRepository.vibrateBeforeTurn) return
         val instruction = mutableUiState.value.guidance?.currentInstruction ?: return
         if (
             instruction.type == ManeuverType.STRAIGHT ||

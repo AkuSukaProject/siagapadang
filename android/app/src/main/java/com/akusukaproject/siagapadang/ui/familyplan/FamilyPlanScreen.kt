@@ -62,6 +62,18 @@ import com.akusukaproject.siagapadang.ui.theme.SiagaCream
 import com.akusukaproject.siagapadang.ui.theme.SiagaNavy
 import com.akusukaproject.siagapadang.ui.theme.SiagaRust
 import com.akusukaproject.siagapadang.ui.theme.SiagaWarning
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
+import com.akusukaproject.siagapadang.R
+import com.akusukaproject.siagapadang.ui.common.CalmCardShape
+import com.akusukaproject.siagapadang.ui.common.CalmScaffold
+import com.akusukaproject.siagapadang.ui.common.CalmTile
+import com.akusukaproject.siagapadang.ui.common.SectionLabel
+import com.akusukaproject.siagapadang.ui.theme.SiagaLine
+import com.akusukaproject.siagapadang.ui.theme.SiagaRustDeep
+import com.akusukaproject.siagapadang.ui.theme.SiagaTextSecondary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -164,107 +176,78 @@ private fun FamilyPlanContent(
     onRemoveMember: (FamilyMember) -> Unit,
     onShare: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SiagaNavy)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            OutlinedButton(
-                onClick = onBack,
-                border = BorderStroke(1.dp, MutedOnNavy),
-                shape = RoundedCornerShape(11.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp),
-                modifier = Modifier.heightIn(min = 48.dp),
-            ) {
-                Text(text = "← Kembali", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
+    CalmScaffold(title = "Rencana keluarga", backLabel = "Menu", onBack = onBack) {
+        PrincipleNotice()
+        SectionLabel("Titik temu setelah aman")
+        CalmTile(
+            iconRes = R.drawable.ic_ms_flag,
+            iconBackground = SiagaWarning,
+            iconTint = SiagaNavy,
+            title = plan.meetingPointName ?: "Belum dipilih",
+            detail = "Tempat berkumpul setelah semua anggota selesai evakuasi",
+            trailing = {
+                Text(
+                    text = if (plan.meetingPointName == null) "Pilih" else "Ubah",
+                    color = SiagaNavy,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            onClick = onPickMeetingPoint,
+        )
+        SectionLabel("Anggota · ${plan.members.size}")
+        if (plan.members.isEmpty()) {
             Text(
-                text = "Rencana Keluarga",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.semantics { heading() },
+                text = "Belum ada anggota. Tambahkan siapa saja yang biasanya berada di tempat berbeda saat siang hari.",
+                color = SiagaTextSecondary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
             )
         }
-
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            item { PrincipleNotice() }
-            item {
-                SectionTitle("Titik temu keluarga")
-                Spacer(modifier = Modifier.height(6.dp))
-                MeetingPointCard(name = plan.meetingPointName, onPick = onPickMeetingPoint)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            plan.members.forEach { member ->
+                MemberCard(member = member, onEdit = { onEditMember(member) }, onRemove = { onRemoveMember(member) })
             }
-            item {
-                SectionTitle("Anggota keluarga")
-                if (plan.members.isEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Belum ada anggota. Tambahkan siapa saja yang biasanya berada di tempat berbeda saat siang hari.",
-                        color = MutedOnNavy,
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-            items(plan.members, key = FamilyMember::id) { member ->
-                MemberCard(
-                    member = member,
-                    onEdit = { onEditMember(member) },
-                    onRemove = { onRemoveMember(member) },
-                )
-            }
-            item {
-                Button(
-                    onClick = onAddMember,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SiagaWarning,
-                        contentColor = SiagaNavy,
-                    ),
-                    shape = RoundedCornerShape(11.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                ) {
-                    Text(text = "+ Tambah anggota", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onAddMember,
+                colors = ButtonDefaults.buttonColors(containerColor = SiagaWarning, contentColor = SiagaNavy),
+                border = BorderStroke(2.dp, SiagaNavy),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+            ) {
+                Icon(painterResource(R.drawable.ic_ms_person_add), contentDescription = null, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Tambah", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             }
             if (!plan.isEmpty) {
-                item {
-                    OutlinedButton(
-                        onClick = onShare,
-                        border = BorderStroke(1.5.dp, Color.White),
-                        shape = RoundedCornerShape(11.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                    ) {
-                        Text(text = "Bagikan rencana ke keluarga", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
+                OutlinedButton(
+                    onClick = onShare,
+                    border = BorderStroke(1.dp, SiagaLine),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = SiagaNavy),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(56.dp),
+                ) {
+                    Icon(painterResource(R.drawable.ic_ms_share), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Bagikan", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            plan.updatedAtMillis?.let { updatedAt ->
-                item {
-                    Text(
-                        text = "Tersimpan di HP ini · diperbarui ${formatUpdatedAt(updatedAt)}",
-                        color = MutedOnNavy,
-                        fontSize = 12.sp,
-                    )
-                }
-            }
+        }
+        plan.updatedAtMillis?.let { updatedAt ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Tersimpan di HP ini · diperbarui ${formatUpdatedAt(updatedAt)}",
+                color = SiagaTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }
@@ -272,70 +255,28 @@ private fun FamilyPlanContent(
 @Composable
 private fun PrincipleNotice() {
     Surface(
-        color = SiagaCream,
+        color = Color(0xFFFBE3D9),
         contentColor = SiagaNavy,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.5.dp, SiagaRust),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, SiagaRustDeep.copy(alpha = 0.4f)),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = "Susun saat tenang. Saat gempa, jangan kembali untuk menjemput.",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Black,
+        Row(modifier = Modifier.padding(14.dp)) {
+            Icon(
+                painterResource(R.drawable.ic_ms_do_not_disturb_on),
+                contentDescription = null,
+                tint = SiagaRustDeep,
+                modifier = Modifier.size(26.dp),
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Setiap anggota berjalan cepat ke TES masing-masing, lalu bertemu di titik temu setelah petugas menyatakan aman. " +
-                    "Aplikasi tidak mengetahui posisi anggota keluarga saat bencana. Rencana ini tersimpan di HP dan dapat dibuka tanpa internet.",
-                fontSize = 13.sp,
-                color = MutedOnCream,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text = text.uppercase(Locale("id", "ID")),
-        color = SiagaWarning,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Black,
-        letterSpacing = 1.sp,
-        modifier = Modifier.semantics { heading() },
-    )
-}
-
-@Composable
-private fun MeetingPointCard(name: String?, onPick: () -> Unit) {
-    Surface(
-        color = SiagaCream,
-        contentColor = SiagaNavy,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 72.dp)
-            .clickable(role = Role.Button, onClickLabel = "Pilih titik temu", onClick = onPick),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(14.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Saat gempa, jangan kembali untuk menjemput.", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    text = name ?: "Belum dipilih",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (name == null) MutedOnCream else SiagaNavy,
-                )
-                Text(
-                    text = "Tempat berkumpul setelah semua anggota selesai evakuasi.",
-                    fontSize = 12.sp,
-                    color = MutedOnCream,
+                    "Setiap anggota berjalan cepat ke TES masing-masing. Aplikasi tidak mengetahui posisi anggota keluarga. Rencana ini tersimpan di HP dan dapat dibuka tanpa internet.",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = SiagaTextSecondary,
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = if (name == null) "Pilih" else "Ubah", fontWeight = FontWeight.Black, fontSize = 15.sp)
         }
     }
 }
@@ -347,42 +288,39 @@ private fun MemberCard(
     onRemove: () -> Unit,
 ) {
     Surface(
-        color = SiagaCream,
+        color = Color.White,
         contentColor = SiagaNavy,
-        shape = RoundedCornerShape(12.dp),
+        shape = CalmCardShape,
+        border = BorderStroke(1.dp, SiagaLine),
+        shadowElevation = 2.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp)) {
-            Text(text = member.name, fontSize = 18.sp, fontWeight = FontWeight.Black)
-            Spacer(modifier = Modifier.height(4.dp))
-            LabeledValue(label = "Biasanya di", value = member.routineLocation.ifBlank { "Belum diisi" })
-            LabeledValue(label = "Menuju", value = member.destinationName ?: "TES belum dipilih")
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                CardTextButton(text = "Hapus", color = SiagaRust, onClick = onRemove)
-                CardTextButton(text = "Ubah", color = SiagaNavy, onClick = onEdit)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp)) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(Color(0xFFDDE7FB), CircleShape),
+            ) {
+                Text(member.name.take(1).uppercase(), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2F5FBF))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(member.name, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "${member.routineLocation.ifBlank { "Lokasi belum diisi" }} → ${member.destinationName ?: "TES belum dipilih"}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = SiagaTextSecondary,
+                )
+            }
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_ms_edit), contentDescription = "Ubah ${member.name}", tint = SiagaNavy)
+            }
+            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_ms_delete), contentDescription = "Hapus ${member.name}", tint = SiagaRustDeep)
             }
         }
-    }
-}
-
-@Composable
-private fun LabeledValue(label: String, value: String) {
-    Row(modifier = Modifier.padding(vertical = 1.dp)) {
-        Text(text = "$label: ", fontSize = 14.sp, color = MutedOnCream)
-        Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun CardTextButton(text: String, color: Color, onClick: () -> Unit) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp),
-    ) {
-        Text(text = text, color = color, fontWeight = FontWeight.Black, fontSize = 15.sp)
     }
 }
 

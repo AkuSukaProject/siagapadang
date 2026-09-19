@@ -3,6 +3,8 @@ package com.akusukaproject.siagapadang.data.repository
 import com.akusukaproject.siagapadang.data.local.EvacuationDao
 import com.akusukaproject.siagapadang.data.local.RouteRow
 import com.akusukaproject.siagapadang.data.model.EvacuationPoint
+import com.akusukaproject.siagapadang.data.model.Facility
+import com.akusukaproject.siagapadang.data.model.FacilityKind
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.EvacuationSummary
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
@@ -80,6 +82,19 @@ class EvacuationRepository(
                 zoneCode = tes.zona,
                 capacityPeople = tes.kapasitas.roundToInt(),
                 coordinate = GeoCoordinate(latitude = tes.lat, longitude = tes.lon),
+            )
+        }
+
+    suspend fun loadFacilities(): List<Facility> =
+        dao.findAllFacilities().mapNotNull { row ->
+            val kind = FacilityKind.entries.firstOrNull { it.name == row.jenis } ?: return@mapNotNull null
+            Facility(
+                id = row.facilityId,
+                name = row.nama,
+                kind = kind,
+                zone = row.zonaSektor.orEmpty(),
+                capacityPeople = row.kapasitas?.roundToInt() ?: 0,
+                coordinate = GeoCoordinate(latitude = row.lat, longitude = row.lon),
             )
         }
 

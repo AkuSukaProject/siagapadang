@@ -56,6 +56,10 @@ private const val WALKING_SPEED_METERS_PER_SECOND = 1.2
 fun MenuScreen(
     onBack: () -> Unit,
     onOpenFamilyPlan: () -> Unit,
+    onOpenFacilities: () -> Unit,
+    onOpenGuide: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit,
     evacuationViewModel: EvacuationViewModel = viewModel(),
 ) {
     val state by evacuationViewModel.uiState.collectAsStateWithLifecycle()
@@ -74,7 +78,10 @@ fun MenuScreen(
             contentColor = Color.White,
             shape = RoundedCornerShape(24.dp),
             shadowElevation = 4.dp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .clickable(role = Role.Button, onClick = onOpenFacilities),
         ) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -103,6 +110,19 @@ fun MenuScreen(
                     fontWeight = FontWeight.Medium,
                     color = SiagaOnNavyMuted,
                 )
+                Surface(
+                    color = SiagaWarning,
+                    contentColor = SiagaNavy,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    Text(
+                        "Lihat semua TES & TEA  →",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -136,6 +156,42 @@ fun MenuScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+        Spacer(Modifier.height(12.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
+        ) {
+            DashboardTile(
+                iconRes = R.drawable.ic_ms_menu_book,
+                iconBackground = Color(0xFFDDE7FB),
+                iconTint = Color(0xFF2F5FBF),
+                title = "Panduan",
+                value = "Saat gempa kuat",
+                detail = "Baca tanpa internet",
+                onClick = onOpenGuide,
+                modifier = Modifier.weight(1f),
+            )
+            DashboardTile(
+                iconRes = R.drawable.ic_ms_settings,
+                iconBackground = Color(0xFFE7E9EE),
+                iconTint = SiagaTextSecondary,
+                title = "Pengaturan",
+                value = "Getar & lokasi",
+                detail = "Atur navigasi",
+                onClick = onOpenSettings,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        com.akusukaproject.siagapadang.ui.common.CalmTile(
+            iconRes = R.drawable.ic_ms_info,
+            iconBackground = Color(0xFFE7E9EE),
+            iconTint = SiagaTextSecondary,
+            title = "Tentang & sumber data",
+            onClick = onOpenAbout,
+        )
     }
 
     if (showDataDialog) {

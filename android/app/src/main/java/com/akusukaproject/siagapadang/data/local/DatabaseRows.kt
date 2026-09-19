@@ -46,6 +46,16 @@ data class TesRow(
     val lon: Double,
 )
 
+data class FacilityRow(
+    @ColumnInfo(name = "facility_id") val facilityId: String,
+    val nama: String,
+    val jenis: String,
+    @ColumnInfo(name = "zona_sektor") val zonaSektor: String?,
+    val kapasitas: Double?,
+    val lat: Double,
+    val lon: Double,
+)
+
 data class InundationZoneRow(
     @ColumnInfo(name = "zone_id") val zoneId: Long,
     @ColumnInfo(name = "nama_zona") val name: String,

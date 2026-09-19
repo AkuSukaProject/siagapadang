@@ -11,6 +11,10 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.akusukaproject.siagapadang.ui.evacuation.EvacuationScreen
 import com.akusukaproject.siagapadang.ui.familyplan.FamilyPlanScreen
 import com.akusukaproject.siagapadang.ui.menu.MenuScreen
+import com.akusukaproject.siagapadang.ui.facilities.FacilitiesScreen
+import com.akusukaproject.siagapadang.ui.info.AboutScreen
+import com.akusukaproject.siagapadang.ui.info.GuideScreen
+import com.akusukaproject.siagapadang.ui.info.SettingsScreen
 import com.akusukaproject.siagapadang.ui.theme.SiagaPadangTheme
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +33,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SiagaPadangTheme {
                 var screen by rememberSaveable { mutableStateOf(AppScreen.EVACUATION) }
+                var aboutReturn by rememberSaveable { mutableStateOf(AppScreen.MENU) }
                 when (screen) {
                     AppScreen.EVACUATION -> EvacuationScreen(
                         showArrivalEvidence = showArrivalEvidence,
@@ -39,15 +44,32 @@ class MainActivity : ComponentActivity() {
                     AppScreen.MENU -> MenuScreen(
                         onBack = { screen = AppScreen.EVACUATION },
                         onOpenFamilyPlan = { screen = AppScreen.FAMILY_PLAN },
+                        onOpenFacilities = { screen = AppScreen.FACILITIES },
+                        onOpenGuide = { screen = AppScreen.GUIDE },
+                        onOpenSettings = { screen = AppScreen.SETTINGS },
+                        onOpenAbout = {
+                            aboutReturn = AppScreen.MENU
+                            screen = AppScreen.ABOUT
+                        },
                     )
                     AppScreen.FAMILY_PLAN -> FamilyPlanScreen(onBack = { screen = AppScreen.MENU })
+                    AppScreen.FACILITIES -> FacilitiesScreen(onBack = { screen = AppScreen.MENU })
+                    AppScreen.GUIDE -> GuideScreen(onBack = { screen = AppScreen.MENU })
+                    AppScreen.SETTINGS -> SettingsScreen(
+                        onBack = { screen = AppScreen.MENU },
+                        onOpenAbout = {
+                            aboutReturn = AppScreen.SETTINGS
+                            screen = AppScreen.ABOUT
+                        },
+                    )
+                    AppScreen.ABOUT -> AboutScreen(onBack = { screen = aboutReturn })
                 }
             }
         }
     }
 
     /** Layar evakuasi selalu menjadi layar awal; halaman lain adalah persiapan masa tenang. */
-    private enum class AppScreen { EVACUATION, MENU, FAMILY_PLAN }
+    private enum class AppScreen { EVACUATION, MENU, FAMILY_PLAN, FACILITIES, GUIDE, SETTINGS, ABOUT }
 
     private companion object {
         const val EXTRA_SHOW_ARRIVAL_EVIDENCE = "show_arrival_evidence"

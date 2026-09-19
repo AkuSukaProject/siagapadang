@@ -102,6 +102,15 @@ interface EvacuationDao {
     )
     suspend fun findAllTes(): List<TesRow>
 
+    @SkipQueryVerification
+    @Query(
+        """
+        SELECT facility_id, nama, jenis, zona_sektor, kapasitas, lat, lon
+        FROM v_fasilitas_evakuasi
+        """,
+    )
+    suspend fun findAllFacilities(): List<FacilityRow>
+
     // tb_edges hanya menyimpan satu arah, jadi tetangga dicari dari kedua ujung ruas.
     @SkipQueryVerification
     @Query(

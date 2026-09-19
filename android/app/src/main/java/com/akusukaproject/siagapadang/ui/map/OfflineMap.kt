@@ -61,6 +61,8 @@ import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.expressions.Expression
+import com.akusukaproject.siagapadang.data.model.Facility
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
@@ -120,7 +122,16 @@ fun OfflineMap(
     onViewportChanged: (GeoCoordinate) -> Unit,
     onUserMapGesture: () -> Unit,
     modifier: Modifier = Modifier,
+    facilityMarkers: List<Facility> = emptyList(),
+    selectedFacilityId: String? = null,
+    onFacilityClick: (String) -> Unit = {},
+    focusCoordinates: List<GeoCoordinate> = emptyList(),
+    focusRequest: Int = 0,
+    focusBottomPaddingPx: Int = 0,
 ) {
+    val latestFacilities = rememberUpdatedState(facilityMarkers)
+    val latestSelectedFacility = rememberUpdatedState(selectedFacilityId)
+    val latestOnFacilityClick = rememberUpdatedState(onFacilityClick)
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val displayRouteCoordinates = remember(routeCoordinates) {
@@ -199,6 +210,14 @@ fun OfflineMap(
                         latestOnUserMapGesture.value()
                     }
                 }
+                map.addOnMapClickListener { point ->
+                    val screenPoint = map.projection.toScreenLocation(point)
+                    val facilityId = map.queryRenderedFeatures(screenPoint, FACILITY_LAYER_ID)
+                        .firstOrNull()
+                        ?.getStringProperty(FACILITY_ID_PROPERTY)
+                    facilityId?.let(latestOnFacilityClick.value)
+                    facilityId != null
+                }
                 map.addOnCameraIdleListener {
                     map.cameraPosition.target?.let { target ->
                         latestOnViewportChanged.value(target.toGeoCoordinate())
@@ -224,6 +243,7 @@ fun OfflineMap(
                         userMarkerBitmap = userMarkerBitmap,
                         offlineRoadOverlayTracker = cameraTracker,
                     )
+                    updateFacilityOverlay(style, latestFacilities.value, latestSelectedFacility.value)
                     map.cameraPosition.target?.let { target ->
                         latestOnViewportChanged.value(target.toGeoCoordinate())
                     }
@@ -301,6 +321,11 @@ fun OfflineMap(
                         userMarkerBitmap = userMarkerBitmap,
                         offlineRoadOverlayTracker = cameraTracker,
                     )
+                    updateFacilityOverlay(style, facilityMarkers, selectedFacilityId)
+                }
+                if (focusRequest != cameraTracker.focusRequest && focusCoordinates.isNotEmpty()) {
+                    showFocus(map, focusCoordinates, focusBottomPaddingPx)
+                    cameraTracker.focusRequest = focusRequest
                 }
                 if (followUserLocation) currentLocation?.let { location ->
                     if (routeOverviewRequest != cameraTracker.routeOverviewRequest) {
@@ -330,6 +355,67 @@ fun OfflineMap(
             }
         },
         modifier = modifier,
+    )
+}
+
+/** Penanda TES (kuning) dan TEA (hijau) untuk halaman TES & TEA; kosong di layar evakuasi. */
+private fun updateFacilityOverlay(
+    style: Style,
+    facilities: List<Facility>,
+    selectedFacilityId: String?,
+) {
+    val existingSource = style.getSource(FACILITY_SOURCE_ID) as? GeoJsonSource
+    if (existingSource == null && facilities.isEmpty()) return
+    val collection = FeatureCollection.fromFeatures(
+        facilities.map { facility ->
+            Feature.fromGeometry(
+                Point.fromLngLat(facility.coordinate.longitude, facility.coordinate.latitude),
+            ).apply {
+                addStringProperty(FACILITY_ID_PROPERTY, facility.id)
+                addStringProperty(FACILITY_KIND_PROPERTY, facility.kind.name)
+                addBooleanProperty(FACILITY_SELECTED_PROPERTY, facility.id == selectedFacilityId)
+            }
+        },
+    )
+    if (existingSource != null) {
+        existingSource.setGeoJson(collection)
+        return
+    }
+    style.addSource(GeoJsonSource(FACILITY_SOURCE_ID, collection))
+    val selected = Expression.eq(Expression.get(FACILITY_SELECTED_PROPERTY), Expression.literal(true))
+    style.addLayer(
+        CircleLayer(FACILITY_LAYER_ID, FACILITY_SOURCE_ID).withProperties(
+            circleRadius(Expression.switchCase(selected, Expression.literal(13f), Expression.literal(8f))),
+            circleColor(
+                Expression.match(
+                    Expression.get(FACILITY_KIND_PROPERTY),
+                    Expression.literal("TEA"),
+                    Expression.color(android.graphics.Color.parseColor("#58D68D")),
+                    Expression.color(android.graphics.Color.parseColor("#F7FF0C")),
+                ),
+            ),
+            circleStrokeColor("#01346D"),
+            circleStrokeWidth(Expression.switchCase(selected, Expression.literal(3.5f), Expression.literal(1.5f))),
+        ),
+    )
+}
+
+/** Mengarahkan kamera ke satu titik atau ke kumpulan titik (halaman TES & TEA). */
+private fun showFocus(
+    map: org.maplibre.android.maps.MapLibreMap,
+    coordinates: List<GeoCoordinate>,
+    bottomPaddingPx: Int,
+) {
+    val points = coordinates.map { LatLng(it.latitude, it.longitude) }
+    if (points.size == 1) {
+        map.easeCamera(CameraUpdateFactory.newLatLngZoom(points.first(), FOCUS_SINGLE_ZOOM), ROUTE_OVERVIEW_ANIMATION_MILLIS)
+        return
+    }
+    val bounds = LatLngBounds.Builder().includes(points).build()
+    val padding = ROUTE_OVERVIEW_PADDING_PX
+    map.easeCamera(
+        CameraUpdateFactory.newLatLngBounds(bounds, padding, padding * 4, padding, padding + bottomPaddingPx),
+        ROUTE_OVERVIEW_ANIMATION_MILLIS,
     )
 }
 
@@ -844,6 +930,7 @@ private class CameraTracker {
     var recenterRequest: Int = -1
     var routeOverviewRequest: Int = 0
     var offlineRoadViewportId: String? = null
+    var focusRequest: Int = 0
 }
 
 private class MapViewLifecycleController(
@@ -929,6 +1016,12 @@ private const val LOCATION_LAYER_ID = "user-location-layer"
 private const val USER_LOCATION_IMAGE_ID = "user-location-navigation-image"
 private const val DESTINATION_SOURCE_ID = "evacuation-destination-source"
 private const val DESTINATION_LAYER_ID = "evacuation-destination-layer"
+private const val FACILITY_SOURCE_ID = "facility-source"
+private const val FOCUS_SINGLE_ZOOM = 15.0
+private const val FACILITY_LAYER_ID = "facility-layer"
+private const val FACILITY_ID_PROPERTY = "id"
+private const val FACILITY_KIND_PROPERTY = "kind"
+private const val FACILITY_SELECTED_PROPERTY = "selected"
 private const val DESTINATION_IMAGE_ID = "evacuation-destination-annotation-image"
 private const val SAFE_ZONE_SOURCE_ID = "tsunami-safe-zone-source"
 private const val SAFE_ZONE_FILL_LAYER_ID = "tsunami-safe-zone-fill-layer"

@@ -63,6 +63,8 @@ class EvacuationRepositoryTest {
 
         override suspend fun findEdgesTouchingNode(nodeId: Long): List<EdgeRow> = emptyList()
 
+        override suspend fun findAllFacilities(): List<com.akusukaproject.siagapadang.data.local.FacilityRow> = emptyList()
+
         override suspend fun findTesByName(name: String): TesRow? = when (name) {
             "TES Masjid Raya" -> TesRow(
                 tesId = "TES_01",
