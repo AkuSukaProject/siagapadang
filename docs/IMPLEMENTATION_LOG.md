@@ -2,6 +2,26 @@
 
 Dokumen ini mencatat perubahan pengembangan, hasil pemeriksaan, dan validasi yang masih ditunda.
 
+## 19 September 2026 — Pengukuran NF-02
+
+- Perangkat: Infinix X6855, Android 16, APK debug arm64, **mode pesawat**, GPS hangat.
+- Metode: cold start berulang (`am force-stop` lalu `am start -W`). Pencatat sementara
+  `System.currentTimeMillis()` dipasang di `EvacuationViewModel`, lalu dihapus setelah pengukuran.
+- 29 putaran dijalankan. 8 putaran (run 12–19) dibuang karena layar mati atau tertutup layar kunci.
+  Tersisa 21 putaran valid.
+
+| Yang diukur | Min | Median | P90 | Maks |
+|---|---|---|---|---|
+| Lokasi masuk → rute siap (NF-02) | 415 ms | 597 ms | 696 ms | 727 ms |
+| Layar evakuasi dibuat → rute siap | 951 ms | 1.189 ms | 1.338 ms | 1.477 ms |
+| Aplikasi dibuka → frame pertama (`TotalTime`) | 751 ms | 857 ms | 1.026 ms | 1.803 ms |
+
+- Rute siap mencakup pencarian simpul terdekat, pembacaan `tb_routes`, pengambilan ruas `tb_edges`,
+  dan perangkaian polyline.
+- Maksimum `TotalTime` 1.803 ms terjadi pada putaran pertama setelah pemasangan APK.
+- Kesimpulan: NF-02 (< 1 detik) tercapai pada perangkat ini, 21/21 putaran. NF-04 memerlukan
+  pengukuran yang sama pada tiga perangkat lain.
+
 ## 19 September 2026 — F-07 Rencana Titik Temu Keluarga dan Latar Peta Gelap
 
 - Branch: `feat/f07-family-plan`, digabung langsung ke `main` atas arahan pengguna (tanpa review PR).

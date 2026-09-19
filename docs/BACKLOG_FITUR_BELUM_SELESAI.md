@@ -406,7 +406,9 @@ Kriteria selesai:
 ### Q-01 — Pengujian Perangkat dan Kinerja
 
 - Ukur waktu dari aplikasi dibuka sampai arahan pertama tampil.
-  - Pengamatan manual 19 September 2026 (Infinix X6855): arahan tampil sekitar 1 detik dan kurang dari 2 detik. Target NF-02 adalah **< 1 detik**, jadi target ini **belum terbukti tercapai**. Perlu pengukuran dengan `System.currentTimeMillis()` pada alur baca (`CLAUDE.md` Bagian 8), minimal 10 kali per perangkat, dicatat median dan nilai terburuknya, pada empat perangkat untuk NF-04.
+  - ✅ **NF-02 tercapai pada Infinix X6855** (Android 16, mode pesawat, 19 September 2026, 21 cold start valid). Lokasi masuk → rute siap: median **597 ms**, P90 696 ms, maksimum **727 ms**; 21/21 di bawah 1 detik. Layar evakuasi dibuat → rute siap: median 1.189 ms (termasuk menunggu posisi pertama dari GPS, sekitar 0,6 detik). Aplikasi dibuka → frame pertama: median 857 ms. Rincian di `docs/IMPLEMENTATION_LOG.md`.
+  - Keterbatasan: GPS dalam keadaan hangat (posisi terakhir tersedia). Pada GPS dingin, posisi pertama dapat butuh beberapa detik di luar kendali aplikasi, sehingga klaim NF-02 dihitung sejak posisi diperoleh.
+  - Belum: NF-04 — ulangi pengukuran yang sama pada tiga perangkat lain. Pencatat `EvacuationTiming` (`adb logcat -s EvacuationTiming`) mencatat waktu lokasi → rute siap di setiap pembukaan.
 - Uji mode pesawat pada instalasi bersih.
 - Uji minimal 3–5 perangkat berbeda merek dan versi Android.
 - Uji GPS buruk, izin ditolak, sensor kompas tidak tersedia, baterai hemat, rotasi layar, dan aplikasi kembali dari latar belakang.
