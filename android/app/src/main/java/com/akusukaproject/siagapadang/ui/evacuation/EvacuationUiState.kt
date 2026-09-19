@@ -14,6 +14,7 @@ import com.akusukaproject.siagapadang.domain.DirectOrientation
 
 data class EvacuationUiState(
     val hasLocationPermission: Boolean = false,
+    val familyMeetingPointName: String? = null,
     val isLoadingRoute: Boolean = false,
     val currentLocation: GeoCoordinate? = null,
     val locationAccuracyMeters: Float? = null,

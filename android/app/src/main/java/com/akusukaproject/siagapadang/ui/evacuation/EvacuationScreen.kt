@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseDto
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -115,6 +117,7 @@ fun EvacuationScreen(
     showArrivalEvidence: Boolean = false,
     evidenceDestinationName: String = "TES tujuan",
     evidenceDestinationCapacity: Int? = null,
+    onOpenFamilyPlan: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -136,6 +139,7 @@ fun EvacuationScreen(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.refreshFamilyMeetingPoint()
         val granted = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         if (granted) {
@@ -160,6 +164,7 @@ fun EvacuationScreen(
         onPerformCheckin = viewModel::performShelterCheckin,
         onDismissObstructionMessage = viewModel::dismissObstructionMessage,
         onReportOccupancy = viewModel::reportShelterOccupancy,
+        onOpenFamilyPlan = onOpenFamilyPlan,
     )
 }
 
@@ -179,6 +184,7 @@ private fun EvacuationContent(
     onPerformCheckin: () -> Unit,
     onDismissObstructionMessage: () -> Unit = {},
     onReportOccupancy: (String) -> Unit = {},
+    onOpenFamilyPlan: () -> Unit = {},
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
@@ -291,18 +297,25 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         }
-        DataUpdateShortcut(
-            isChecking = state.isCheckingDataUpdate,
-            onClick = {
-                showDataUpdateDialog = true
-                onCheckDataUpdates()
-            },
-            scale = scale,
+        // Header peta yang diperbesar memakai area kiri atas untuk nama tujuan, jadi pintasan
+        // hanya ditampilkan ketika panel peta tertutup.
+        if (expansionProgress < 0.5f) Row(
+            horizontalArrangement = Arrangement.spacedBy(scaled(6f)),
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = scaled(12f), top = scaled(4f))
                 .zIndex(30f),
-        )
+        ) {
+            DataUpdateShortcut(
+                isChecking = state.isCheckingDataUpdate,
+                onClick = {
+                    showDataUpdateDialog = true
+                    onCheckDataUpdates()
+                },
+                scale = scale,
+            )
+            FamilyPlanShortcut(onClick = onOpenFamilyPlan, scale = scale)
+        }
         selectedStatusDetail?.let { detail ->
             StatusDetailCard(
                 detail = detail,
@@ -459,6 +472,7 @@ private fun EvacuationContent(
             } else {
                 state.route?.destinationCapacityPeople
             },
+            familyMeetingPointName = state.familyMeetingPointName,
             checkinStatus = state.checkinStatus,
             checkinMessage = state.checkinMessage,
             checkedInAt = state.checkedInAt,
@@ -535,6 +549,34 @@ private fun DataUpdateShortcut(
                 fontWeight = FontWeight.Black,
             )
         }
+    }
+}
+
+@Composable
+private fun FamilyPlanShortcut(
+    onClick: () -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaCream,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((11f * scale).dp),
+        border = BorderStroke(1.dp, SiagaWarning),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Buka rencana titik temu keluarga" },
+    ) {
+        Text(
+            text = "KELUARGA",
+            fontSize = (10f * scale).sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.padding(
+                horizontal = (11f * scale).dp,
+                vertical = (10f * scale).dp,
+            ),
+        )
     }
 }
 
@@ -2888,10 +2930,49 @@ private fun BlockedRouteDialog(
 }
 
 @Composable
+private fun FamilyMeetingPointReminder(meetingPointName: String) {
+    Surface(
+        color = Color.White,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.5.dp, SiagaNavy),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "Titik temu keluarga",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = SiagaNavy.copy(alpha = 0.78f),
+            )
+            Text(
+                text = meetingPointName,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Temui keluarga di sana setelah petugas menyatakan aman. Jangan kembali untuk menjemput.",
+                fontSize = 12.sp,
+                color = SiagaNavy.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ArrivalDialog(
     arrivalReason: EvacuationArrivalReason = EvacuationArrivalReason.EVACUATION_POINT,
     destinationName: String,
     destinationCapacityPeople: Int?,
+    familyMeetingPointName: String? = null,
     checkinStatus: CheckinStatus = CheckinStatus.IDLE,
     checkinMessage: String? = null,
     checkedInAt: String? = null,
@@ -2923,7 +3004,9 @@ private fun ArrivalDialog(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
             ) {
                 Surface(
                     color = SiagaNextGreen.copy(alpha = 0.24f),
@@ -2993,6 +3076,10 @@ private fun ArrivalDialog(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(16.dp),
                     )
+                }
+                familyMeetingPointName?.let { meetingPoint ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FamilyMeetingPointReminder(meetingPointName = meetingPoint)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(

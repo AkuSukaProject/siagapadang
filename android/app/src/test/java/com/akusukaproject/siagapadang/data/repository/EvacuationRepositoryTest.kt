@@ -59,6 +59,8 @@ class EvacuationRepositoryTest {
             EdgeRow(edgeId = 105L, u = 3L, v = 4L, length = 120.0, geometry = "LINESTRING (100.37 -0.93, 100.38 -0.92)"),
         )
 
+        override suspend fun findAllTes(): List<TesRow> = emptyList()
+
         override suspend fun findTesByName(name: String): TesRow? = when (name) {
             "TES Masjid Raya" -> TesRow(
                 tesId = "TES_01",

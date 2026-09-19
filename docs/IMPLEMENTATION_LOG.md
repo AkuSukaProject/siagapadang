@@ -2,6 +2,29 @@
 
 Dokumen ini mencatat perubahan pengembangan, hasil pemeriksaan, dan validasi yang masih ditunda.
 
+## 19 September 2026 — F-07 Rencana Titik Temu Keluarga dan Latar Peta Gelap
+
+- Branch: `feat/f07-family-plan`, digabung langsung ke `main` atas arahan pengguna (tanpa review PR).
+- Commit: `6a7eff9` (F-07), `b3d7fda` (pengingat titik temu, latar peta gelap).
+- Layar Rencana Keluarga: titik temu keluarga dan TES tujuan tiap anggota. Pilihan TES berasal
+  dari `tb_tes` (urut jarak dari posisi HP) atau dari rute rank 1 pada posisi HP saat ini.
+- Rencana disimpan di `SharedPreferences` (`siaga_padang_family_plan`), terpisah dari
+  `ranah_siaga.db` yang read-only. Dibagikan sebagai teks tanpa koordinat.
+- Dialog kedatangan menampilkan titik temu keluarga bila sudah diisi, dan kini dapat digulir.
+- Latar peta tanpa ubin menjadi navy gelap; jaringan jalan diberi tepi gelap dan inti terang,
+  serta selalu digambar di bawah rute. Pintasan DATA/KELUARGA disembunyikan saat peta diperbesar.
+- Unit test: 92 lulus (7 baru untuk penyimpanan rencana dan teks bagikan).
+- Uji perangkat (Infinix X6855, Android 16, mode pesawat): memilih titik temu, menambah anggota,
+  saran TES dari posisi (< 1 detik setelah perbaikan), data bertahan setelah force-stop dan pasang
+  ulang, dialog kedatangan, peta tanpa cache ubin.
+- Temuan yang diperbaiki saat uji: tombol Simpan nonaktif hampir tak terlihat (kontras), saran TES
+  menunggu ~5 detik dalam mode pesawat, pintasan menutupi nama tujuan saat peta diperbesar, dan
+  garis jalan menutupi rute.
+- **Belum diuji di perangkat:** tombol Bagikan dan Hapus anggota.
+- **NF-02:** pengamatan manual pengguna menunjukkan arahan tampil sekitar 1 detik (< 2 detik).
+  Target < 1 detik belum terbukti; pengukuran terinstrumentasi masih diperlukan.
+- Temuan data: basis data belum memuat TEA sebagai tujuan — issue #1.
+
 ## 16 September 2026 — P1-01 Sinkronisasi Dataset yang Aman
 
 - Branch: `feat/p1-safe-dataset-sync`

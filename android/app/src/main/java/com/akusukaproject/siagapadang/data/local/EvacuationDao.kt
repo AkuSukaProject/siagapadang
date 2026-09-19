@@ -91,4 +91,14 @@ interface EvacuationDao {
         """,
     )
     suspend fun findTesByName(name: String): TesRow?
+
+    @SkipQueryVerification
+    @Query(
+        """
+        SELECT tes_id, nama_tes, zona, kapasitas, lat, lon
+        FROM tb_tes
+        ORDER BY nama_tes ASC
+        """,
+    )
+    suspend fun findAllTes(): List<TesRow>
 }
