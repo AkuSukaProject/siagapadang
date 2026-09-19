@@ -19,15 +19,25 @@ def report_obstruction(
     db: Session = Depends(get_db),
     device_hash: str = Depends(get_device_id)
 ):
-    # 1. Pastikan ada EmergencyEvent Aktif
+    # 1. Pastikan ada EmergencyEvent Aktif (Bukan Simulasi)
     active_event = db.query(EmergencyEvent).filter(
-        EmergencyEvent.status == EventStatus.ACTIVE
+        EmergencyEvent.status == EventStatus.ACTIVE,
+        EmergencyEvent.is_simulation == False
     ).order_by(EmergencyEvent.started_at.desc()).first()
     
     if not active_event:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Tidak ada kejadian darurat (Emergency Event) yang aktif. Laporan tidak dapat diterima."
+        )
+        
+    # Validasi dataset_version_id agar tidak terjadi 500 error (FK violation)
+    from app.models.domain import DataVersion
+    dataset_version = db.query(DataVersion).filter(DataVersion.id == report.dataset_version_id).first()
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Versi dataset dengan ID {report.dataset_version_id} tidak valid atau sudah kadaluarsa."
         )
         
     # 2. Validasi Jarak dengan Ruas Jalan (jika data RouteEdge ada di database)
@@ -146,8 +156,10 @@ def get_confirmed_obstructions(
     Mengambil daftar edge_external_id yang statusnya CONFIRMED untuk event darurat aktif saat ini.
     Jika tidak ada event aktif, mengembalikan list kosong.
     """
+    # 1. Pastikan Event Aktif (Bukan Simulasi)
     active_event = db.query(EmergencyEvent).filter(
-        EmergencyEvent.status == EventStatus.ACTIVE
+        EmergencyEvent.status == EventStatus.ACTIVE,
+        EmergencyEvent.is_simulation == False
     ).order_by(EmergencyEvent.started_at.desc()).first()
 
     if not active_event:

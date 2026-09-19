@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ActiveEventResponse(BaseModel):
@@ -9,13 +10,17 @@ class ActiveEventResponse(BaseModel):
     event_external_id: Optional[str] = None
     source: Optional[str] = None
     started_at: Optional[datetime] = None
+    is_simulation: Optional[bool] = None
 
 class EventCreate(BaseModel):
-    source: str = "BMKG"
-    external_event_id: Optional[str] = None
+    external_event_id: Optional[str] = Field(None, description="ID event darurat dari sumber eksternal (misal: ID gempa BMKG)")
+    source: str = Field(..., description="Sumber informasi, contoh: 'BMKG'")
+    is_simulation: bool = Field(False, description="Tandai true jika ini adalah event latihan/drill, bukan bencana nyata")
+    change_reason: Optional[str] = Field(None, description="Alasan pengaktifan event")
 
 class EventUpdateStatus(BaseModel):
-    status: str
+    status: str = Field(..., description="Status event baru (ACTIVE, CLOSED, CANCELLED)")
+    change_reason: Optional[str] = Field(None, description="Alasan penutupan atau perubahan status")
 
 class EventResponse(BaseModel):
     id: int

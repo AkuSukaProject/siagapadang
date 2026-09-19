@@ -5,7 +5,7 @@ from unittest.mock import patch
 from app.main import app
 from app.api.endpoints import bmkg
 from app.database import SessionLocal
-from app.models.domain import EmergencyEvent, EventStatus, EvacuationPoint, EvacuationPointType, StructuralCondition, OperationalStatus, DataVersion, Obstruction, ObstructionReport, Checkin, ShelterOccupancyReport
+from app.models.domain import EmergencyEvent, EventStatus, EvacuationPoint, EvacuationPointType, StructuralCondition, OperationalStatus, DataVersion, Obstruction, ObstructionReport, Checkin, ShelterOccupancyReport, RouteEdge, EventStatusHistory
 
 @pytest.fixture
 def anyio_backend():
@@ -19,8 +19,10 @@ def setup_db_fixtures():
     db.query(ObstructionReport).delete()
     db.query(Obstruction).delete()
     db.query(Checkin).delete()
+    db.query(EventStatusHistory).delete()
     db.query(EmergencyEvent).delete()
     db.query(EvacuationPoint).delete()
+    db.query(RouteEdge).delete()
     db.query(DataVersion).delete()
     db.commit()
 
@@ -272,3 +274,77 @@ async def test_bmkg_unavailable_is_not_reported_as_live_data():
 
     assert res.status_code == 503
     assert "tidak tersedia" in res.json()["detail"]
+
+@pytest.mark.anyio
+async def test_admin_events_require_token():
+    """Endpoint admin harus menolak request tanpa token yang valid."""
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        # Tanpa header sama sekali
+        res = await client.post("/api/v1/status/emergency", json={
+            "source": "BMKG",
+            "is_simulation": True
+        })
+        assert res.status_code == 401
+
+        # Dengan header tapi token salah
+        res2 = await client.post("/api/v1/status/emergency", json={
+            "source": "BMKG",
+            "is_simulation": True
+        }, headers={"Authorization": "Bearer invalidtoken123"})
+        assert res2.status_code == 401
+
+@pytest.mark.anyio
+async def test_event_simulation_override():
+    """Event simulasi otomatis ditutup jika event nyata diaktifkan."""
+    db = SessionLocal()
+    # Hapus data event bawaan fixture
+    db.query(EmergencyEvent).delete()
+    db.commit()
+
+    # Mock environment ADMIN_API_KEYS
+    import os
+    os.environ["ADMIN_API_KEYS"] = "testop:testtoken"
+    # Memaksa reload config (di tes, kita bisa men-set di security.py atau mock langsung)
+    from app.middleware import security
+    security.ADMIN_API_KEYS_MAP = {"testtoken": "testop"}
+
+    headers = {"Authorization": "Bearer testtoken"}
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Start Simulasi
+        res_sim = await client.post("/api/v1/status/emergency", json={
+            "source": "BPBD_DRILL",
+            "external_event_id": "DRILL-01",
+            "is_simulation": True,
+            "change_reason": "Latihan 1"
+        }, headers=headers)
+        assert res_sim.status_code == 200
+        sim_id = res_sim.json()["id"]
+
+        # 2. Start Event Nyata
+        res_real = await client.post("/api/v1/status/emergency", json={
+            "source": "BMKG",
+            "external_event_id": "GEMPA-01",
+            "is_simulation": False,
+            "change_reason": "Gempa Beneran"
+        }, headers=headers)
+        assert res_real.status_code == 200
+        real_id = res_real.json()["id"]
+
+        # 3. Verifikasi Simulasi sudah CLOSED di DB
+        sim_db = db.query(EmergencyEvent).filter(EmergencyEvent.id == sim_id).first()
+        assert sim_db.status == EventStatus.CLOSED
+
+        # 4. Verifikasi Event Nyata masih ACTIVE
+        real_db = db.query(EmergencyEvent).filter(EmergencyEvent.id == real_id).first()
+        assert real_db.status == EventStatus.ACTIVE
+
+        # 5. Verifikasi Log Audit EventStatusHistory
+        history = db.query(EventStatusHistory).filter(
+            EventStatusHistory.event_id == sim_id,
+            EventStatusHistory.new_status == EventStatus.CLOSED
+        ).first()
+        assert history is not None
+        assert "ditutup otomatis karena event nyata" in history.change_reason
+
+    db.close()

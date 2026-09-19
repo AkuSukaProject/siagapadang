@@ -40,6 +40,7 @@ def shelter_checkin(
     # 2. Event dipilih backend agar klien tidak harus menebak ID kejadian aktif.
     event_query = db.query(EmergencyEvent).filter(
         EmergencyEvent.status == EventStatus.ACTIVE,
+        EmergencyEvent.is_simulation == False
     )
     if request.event_external_id:
         event_query = event_query.filter(
@@ -92,8 +93,8 @@ def shelter_checkin(
     if checkin:
         # Perpindahan TES atau update status
         checkin.evacuation_point_id = point.id
-        checkin.status = request.status
-        checkin.checked_in_at = datetime.now(pytz.utc)
+        checkin.status = request.status  # type: ignore
+        checkin.checked_in_at = datetime.now(pytz.utc)  # type: ignore
     else:
         checkin = Checkin(
             event_id=active_event.id,
@@ -110,9 +111,9 @@ def shelter_checkin(
     return CheckInResponse(
         status="success",
         message="Berhasil lapor selamat! Tetap tenang dan tunggu arahan petugas.",
-        event_external_id=active_event.external_event_id,
-        evacuation_point_external_id=point.external_id,
-        checked_in_at=checkin.checked_in_at
+        event_external_id=str(active_event.external_event_id),
+        evacuation_point_external_id=str(point.external_id),
+        checked_in_at=checkin.checked_in_at  # type: ignore
     )
 
 
@@ -122,8 +123,10 @@ def report_occupancy(
     db: Session = Depends(get_db),
     device_hash: str = Depends(get_device_id),
 ):
+    # Pastikan mengambil event aktif sungguhan (bukan simulasi)
     active_event = db.query(EmergencyEvent).filter(
         EmergencyEvent.status == EventStatus.ACTIVE,
+        EmergencyEvent.is_simulation == False
     ).order_by(EmergencyEvent.started_at.desc()).first()
     if not active_event:
         raise HTTPException(status_code=400, detail="Tidak ada kejadian darurat aktif.")
@@ -151,8 +154,8 @@ def report_occupancy(
         ShelterOccupancyReport.device_hash == device_hash,
     ).first()
     if report:
-        report.level = OccupancyLevel(request.level)
-        report.reported_at = datetime.now(pytz.utc)
+        report.level = OccupancyLevel(request.level)  # type: ignore
+        report.reported_at = datetime.now(pytz.utc)  # type: ignore
     else:
         report = ShelterOccupancyReport(
             event_id=active_event.id,
@@ -163,20 +166,22 @@ def report_occupancy(
         )
         db.add(report)
     db.commit()
-    return _occupancy_status(db, active_event.id, point)
+    return _occupancy_status(db, int(active_event.id), point)  # type: ignore
 
 
 @router.get("/{external_id}/occupancy", response_model=OccupancyStatusResponse)
 def get_occupancy_status(external_id: str, db: Session = Depends(get_db)):
+    # 1. Pastikan ada EmergencyEvent Aktif (Bukan Simulasi)
     active_event = db.query(EmergencyEvent).filter(
         EmergencyEvent.status == EventStatus.ACTIVE,
+        EmergencyEvent.is_simulation == False
     ).order_by(EmergencyEvent.started_at.desc()).first()
     if not active_event:
         raise HTTPException(status_code=404, detail="Tidak ada kejadian darurat aktif.")
     point = db.query(EvacuationPoint).filter(EvacuationPoint.external_id == external_id).first()
     if not point:
         raise HTTPException(status_code=404, detail="Tempat evakuasi tidak ditemukan.")
-    return _occupancy_status(db, active_event.id, point)
+    return _occupancy_status(db, int(active_event.id), point)  # type: ignore
 
 
 def _occupancy_status(
@@ -192,7 +197,7 @@ def _occupancy_status(
     ).all()
     if not reports:
         return OccupancyStatusResponse(
-            evacuation_point_external_id=point.external_id,
+            evacuation_point_external_id=str(point.external_id),
             level="UNKNOWN",
             report_count=0,
         )
@@ -202,8 +207,8 @@ def _occupancy_status(
         key=lambda value: (counts[value], ("LOW", "MODERATE", "FULL").index(value)),
     )
     return OccupancyStatusResponse(
-        evacuation_point_external_id=point.external_id,
+        evacuation_point_external_id=str(point.external_id),
         level=level,
         report_count=len(reports),
-        updated_at=max(report.reported_at for report in reports),
+        updated_at=max(report.reported_at for report in reports),  # type: ignore
     )
