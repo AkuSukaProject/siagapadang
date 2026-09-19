@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseDto
@@ -117,7 +119,7 @@ fun EvacuationScreen(
     showArrivalEvidence: Boolean = false,
     evidenceDestinationName: String = "TES tujuan",
     evidenceDestinationCapacity: Int? = null,
-    onOpenFamilyPlan: () -> Unit = {},
+    onOpenMenu: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -159,12 +161,12 @@ fun EvacuationScreen(
         onRefreshBmkgStatus = viewModel::refreshBmkgStatus,
         onCheckDataUpdates = viewModel::checkDataUpdates,
         onInstallDataUpdate = viewModel::installDataUpdate,
-        onSelectAlternative = viewModel::selectAlternativeDestination,
+        onReportObstacle = viewModel::reportEvacuationObstacle,
         onMapViewportChanged = viewModel::onMapViewportChanged,
         onPerformCheckin = viewModel::performShelterCheckin,
         onDismissObstructionMessage = viewModel::dismissObstructionMessage,
         onReportOccupancy = viewModel::reportShelterOccupancy,
-        onOpenFamilyPlan = onOpenFamilyPlan,
+        onOpenMenu = onOpenMenu,
     )
 }
 
@@ -179,19 +181,19 @@ private fun EvacuationContent(
     onRefreshBmkgStatus: () -> Unit,
     onCheckDataUpdates: () -> Unit,
     onInstallDataUpdate: () -> Unit,
-    onSelectAlternative: () -> Unit,
+    onReportObstacle: (EvacuationObstacleType) -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
     onPerformCheckin: () -> Unit,
     onDismissObstructionMessage: () -> Unit = {},
     onReportOccupancy: (String) -> Unit = {},
-    onOpenFamilyPlan: () -> Unit = {},
+    onOpenMenu: () -> Unit = {},
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
         mutableStateOf(showArrivalEvidence)
     }
     var selectedStatusDetail by rememberSaveable { mutableStateOf<StatusDetailType?>(null) }
-    var showDataUpdateDialog by rememberSaveable { mutableStateOf(false) }
+    var collapsedContentHeightPx by remember { mutableIntStateOf(0) }
     var acknowledgedBmkgAlertId by rememberSaveable { mutableStateOf<String?>(null) }
     val mapPanelState = remember { AnchoredDraggableState(MapPanelValue.COLLAPSED) }
     val coroutineScope = rememberCoroutineScope()
@@ -211,7 +213,12 @@ private fun EvacuationContent(
         val scale = (maxWidth.value / FIGMA_WIDTH_DP).coerceIn(0.82f, 1.25f)
         fun scaled(value: Float): Dp = (value * scale).dp
 
-        val collapsedMapHeight = scaled(FIGMA_MAP_HEIGHT_DP).coerceAtMost(maxHeight * 0.40f)
+        val collapsedMapHeight = if (collapsedContentHeightPx > 0) {
+            val contentBottom = TOP_BAR_SPACE + with(density) { collapsedContentHeightPx.toDp() } + MAP_HANDLE_SPACE
+            (maxHeight - contentBottom).coerceIn(MIN_COLLAPSED_MAP_HEIGHT, maxHeight * 0.6f)
+        } else {
+            scaled(FIGMA_MAP_HEIGHT_DP).coerceAtMost(maxHeight * 0.40f)
+        }
         val expandedMapHeight = maxHeight
         val dragRangePx = with(density) {
             (expandedMapHeight - collapsedMapHeight).toPx().coerceAtLeast(1f)
@@ -253,8 +260,7 @@ private fun EvacuationContent(
 
         val handleTop = maxHeight - mapHeight +
             lerp((-24f * scale).dp, (111f * scale).dp, expansionProgress)
-        MapPanelHandle(
-            scale = scale,
+        MapOpenHandle(
             expansionProgress = expansionProgress,
             dragState = mapPanelState,
             onClick = {
@@ -274,16 +280,19 @@ private fun EvacuationContent(
         )
 
         if (expansionProgress < 0.5f) {
-            StatusIconRow(
+            EvacuationTopBar(
                 state = state,
                 selected = selectedStatusDetail,
                 onSelect = { detail ->
                     selectedStatusDetail = if (selectedStatusDetail == detail) null else detail
                 },
-                scale = scale,
+                onOpenMenu = {
+                    selectedStatusDetail = null
+                    onOpenMenu()
+                },
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = scaled(8f))
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                     .zIndex(30f),
             )
         } else {
@@ -300,32 +309,6 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         }
-        // Header peta yang diperbesar memakai area kiri atas untuk nama tujuan, jadi pintasan
-        // hanya ditampilkan ketika panel peta tertutup.
-        if (expansionProgress < 0.5f) Row(
-            horizontalArrangement = Arrangement.spacedBy(scaled(6f)),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = scaled(12f), top = scaled(4f))
-                .zIndex(30f),
-        ) {
-            DataUpdateShortcut(
-                isChecking = state.isCheckingDataUpdate,
-                onClick = {
-                    selectedStatusDetail = null
-                    showDataUpdateDialog = true
-                    onCheckDataUpdates()
-                },
-                scale = scale,
-            )
-            FamilyPlanShortcut(
-                onClick = {
-                    selectedStatusDetail = null
-                    onOpenFamilyPlan()
-                },
-                scale = scale,
-            )
-        }
         selectedStatusDetail?.let { detail ->
             StatusDetailCard(
                 detail = detail,
@@ -336,10 +319,10 @@ private fun EvacuationContent(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(
-                        end = if (expansionProgress < 0.5f) scaled(12f) else scaled(111f),
+                        end = if (expansionProgress < 0.5f) 16.dp else scaled(111f),
                     )
                     .offset(
-                        y = if (expansionProgress < 0.5f) scaled(48f) else scaled(105f),
+                        y = if (expansionProgress < 0.5f) 66.dp else scaled(105f),
                     )
                     .zIndex(31f),
             )
@@ -347,62 +330,35 @@ private fun EvacuationContent(
 
         val route = state.route
         if (route != null) {
-            if (state.directOrientation != null) {
-                DirectOrientationCard(
-                    orientation = state.directOrientation,
-                    deviceHeadingDegrees = state.deviceHeadingDegrees,
-                    scale = scale,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = scaled(53f))
-                        .graphicsLayer(
-                            alpha = collapsedContentAlpha,
-                            translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
-                        ),
-                )
-            } else {
-                NavigationInstructionCard(
-                    route = route,
-                    guidance = state.guidance,
-                    scale = scale,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = scaled(53f))
-                        .graphicsLayer(
-                            alpha = collapsedContentAlpha,
-                            translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
-                        ),
-                )
-            }
-
-            EvacuationTiming(
-                route = route,
-                remainingSeconds = state.remainingEvacuationSeconds,
-                compassMessage = state.compassMessage,
-                scale = scale,
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(y = scaled(304f))
-                    .graphicsLayer(alpha = collapsedContentAlpha),
-            )
-
-            if (state.directOrientation != null) {
-                DirectOrientationWarning(
-                    scale = scale,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = -(mapHeight + scaled(22f)))
-                        .graphicsLayer(alpha = collapsedContentAlpha),
-                )
-            } else {
-                NextInstructionStrip(
-                    guidance = state.guidance,
-                    scale = scale,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = -(mapHeight + scaled(22f)))
-                        .graphicsLayer(alpha = collapsedContentAlpha),
-                )
+                    .padding(top = TOP_BAR_SPACE, start = 16.dp, end = 16.dp)
+                    .widthIn(max = 480.dp)
+                    .onSizeChanged { collapsedContentHeightPx = it.height }
+                    .graphicsLayer(
+                        alpha = collapsedContentAlpha,
+                        translationY = -expansionProgress * with(density) { scaled(45f).toPx() },
+                    ),
+            ) {
+                if (state.directOrientation != null) {
+                    DirectOrientationCard(
+                        orientation = state.directOrientation,
+                        deviceHeadingDegrees = state.deviceHeadingDegrees,
+                        scale = scale,
+                    )
+                    DirectOrientationWarning(scale = scale)
+                } else {
+                    InstructionCardV3(route = route, guidance = state.guidance)
+                    TimeCardV3(
+                        route = route,
+                        guidance = state.guidance,
+                        remainingSeconds = state.remainingEvacuationSeconds,
+                        compassMessage = state.compassMessage,
+                    )
+                }
             }
         } else {
             RoutePreparationState(
@@ -429,8 +385,8 @@ private fun EvacuationContent(
                 border = BorderStroke(1.5.dp, SiagaRust),
                 shadowElevation = 6.dp,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = scaled(52f), start = 14.dp, end = 14.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp, start = 14.dp, end = 14.dp)
                     .fillMaxWidth()
                     .zIndex(32f),
             ) {
@@ -461,12 +417,12 @@ private fun EvacuationContent(
     }
 
     if (showBlockedRouteDialog) {
-        BlockedRouteDialog(
+        ObstacleSheet(
             hasAlternativeRoute = state.remainingAlternativeCount > 0,
             onDismiss = { showBlockedRouteDialog = false },
-            onConfirm = {
+            onSelect = { type ->
                 showBlockedRouteDialog = false
-                onSelectAlternative()
+                onReportObstacle(type)
             },
         )
     }
@@ -501,14 +457,6 @@ private fun EvacuationContent(
         )
     }
 
-    if (showDataUpdateDialog) {
-        DataUpdateDialog(
-            state = state,
-            onDismiss = { showDataUpdateDialog = false },
-            onCheckUpdates = onCheckDataUpdates,
-            onInstallUpdate = onInstallDataUpdate,
-        )
-    }
 
     state.bmkgStatus
         ?.takeIf { it.hasTsunamiPotential && !it.isStale }
@@ -597,7 +545,7 @@ private fun FamilyPlanShortcut(
 }
 
 @Composable
-private fun DataUpdateDialog(
+internal fun DataUpdateDialog(
     state: EvacuationUiState,
     onDismiss: () -> Unit,
     onCheckUpdates: () -> Unit,
@@ -1900,14 +1848,13 @@ private fun EvacuationMapPanel(
             )
         }
 
-        BlockedRouteButton(
+        ObstacleButton(
             enabled = state.canReportBlockedRoute,
             isLoading = state.isLoadingRoute,
             hasArrived = state.hasArrived,
             arrivalReason = state.arrivalReason,
             isDirectOrientationActive = state.directOrientation != null,
             onClick = onBlockedRouteClick,
-            scale = scale,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = (15f * scale).dp, vertical = (12f * scale).dp),
@@ -3395,63 +3342,32 @@ private fun ArrivalDialog(
     }
 }
 
-private data class DirectionPresentation(
+internal data class DirectionPresentation(
     val label: String,
     val drawableRes: Int,
     val assetRotationDegrees: Float = 0f,
     val tint: Boolean = false,
 )
 
-private fun maneuverPresentation(type: ManeuverType): DirectionPresentation = when (type) {
-        ManeuverType.STRAIGHT -> DirectionPresentation(
-            label = "Lurus",
-            drawableRes = R.drawable.ic_figma_straight_arrow,
-            tint = true,
-        )
-        ManeuverType.U_TURN -> DirectionPresentation(
-            label = "Putar balik",
-            drawableRes = R.drawable.ic_maneuver_uturn,
-        )
-        ManeuverType.SLIGHT_RIGHT -> DirectionPresentation(
-            label = "Sedikit ke kanan",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = -90f,
-        )
-        ManeuverType.RIGHT -> DirectionPresentation(
-            label = "Belok kanan",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = -90f,
-        )
-        ManeuverType.SHARP_RIGHT -> DirectionPresentation(
-            label = "Belok tajam kanan",
-            drawableRes = R.drawable.ic_figma_turn_arrow,
-            assetRotationDegrees = -90f,
-        )
-        ManeuverType.SLIGHT_LEFT -> DirectionPresentation(
-            label = "Sedikit ke kiri",
-            drawableRes = R.drawable.ic_maneuver_turn_left,
-        )
-        ManeuverType.LEFT -> DirectionPresentation(
-            label = "Belok kiri",
-            drawableRes = R.drawable.ic_maneuver_turn_left,
-        )
-        ManeuverType.SHARP_LEFT -> DirectionPresentation(
-            label = "Belok tajam kiri",
-            drawableRes = R.drawable.ic_maneuver_turn_left,
-        )
-        ManeuverType.ARRIVE -> DirectionPresentation(
-            label = "Tiba di TES",
-            drawableRes = R.drawable.ic_figma_destination,
-        )
+internal fun maneuverPresentation(type: ManeuverType): DirectionPresentation = when (type) {
+        ManeuverType.STRAIGHT -> DirectionPresentation("Lurus", R.drawable.ic_ms_straight, tint = true)
+        ManeuverType.U_TURN -> DirectionPresentation("Putar balik", R.drawable.ic_ms_u_turn_left, tint = true)
+        ManeuverType.SLIGHT_RIGHT -> DirectionPresentation("Sedikit ke kanan", R.drawable.ic_ms_turn_slight_right, tint = true)
+        ManeuverType.RIGHT -> DirectionPresentation("Belok kanan", R.drawable.ic_ms_turn_right, tint = true)
+        ManeuverType.SHARP_RIGHT -> DirectionPresentation("Belok tajam kanan", R.drawable.ic_ms_turn_sharp_right, tint = true)
+        ManeuverType.SLIGHT_LEFT -> DirectionPresentation("Sedikit ke kiri", R.drawable.ic_ms_turn_slight_left, tint = true)
+        ManeuverType.LEFT -> DirectionPresentation("Belok kiri", R.drawable.ic_ms_turn_left, tint = true)
+        ManeuverType.SHARP_LEFT -> DirectionPresentation("Belok tajam kiri", R.drawable.ic_ms_turn_sharp_left, tint = true)
+        ManeuverType.ARRIVE -> DirectionPresentation("Tiba di TES", R.drawable.ic_ms_flag, tint = true)
     }
 
 private fun estimatedMinutes(route: EvacuationRoute): Int =
     ceil(route.estimatedSeconds / 60.0).toInt().coerceAtLeast(1)
 
-private fun estimatedDistanceMeters(route: EvacuationRoute): Int =
+internal fun estimatedDistanceMeters(route: EvacuationRoute): Int =
     (route.estimatedSeconds * WALKING_SPEED_METERS_PER_SECOND).toInt().coerceAtLeast(0)
 
-private fun formatDistance(distanceMeters: Int): String = when {
+internal fun formatDistance(distanceMeters: Int): String = when {
     distanceMeters < 1_000 -> "${(distanceMeters / 10) * 10} m"
     else -> "%.1f km".format(distanceMeters / 1_000.0)
 }
@@ -3472,7 +3388,7 @@ private fun cardinalDirection(bearingDegrees: Double): String {
     return "${directions[index]} (${normalizedBearing.toInt()}°)"
 }
 
-private fun maneuverDistanceMessage(
+internal fun maneuverDistanceMessage(
     instruction: ManeuverGuidance,
     isApproachingRoute: Boolean = false,
 ): String = when {
@@ -3486,7 +3402,7 @@ private fun maneuverDistanceMessage(
     else -> "${formatDistance(instruction.distanceMeters)} lagi"
 }
 
-private fun maneuverInstructionLabel(
+internal fun maneuverInstructionLabel(
     defaultLabel: String,
     type: ManeuverType,
     isApproachingRoute: Boolean,
@@ -3501,7 +3417,7 @@ private fun maneuverInstructionLabel(
     }
 }
 
-private fun formatDuration(totalSeconds: Int, spaced: Boolean = false): String {
+internal fun formatDuration(totalSeconds: Int, spaced: Boolean = false): String {
     val minutes = totalSeconds.coerceAtLeast(0) / 60
     val seconds = totalSeconds.coerceAtLeast(0) % 60
     val separator = if (spaced) " : " else ":"
@@ -3524,7 +3440,7 @@ private fun expandedDestinationFontSize(destinationName: String): Float = when {
     else -> 12f
 }
 
-private fun gpsStatusColor(state: EvacuationUiState): Color = when {
+internal fun gpsStatusColor(state: EvacuationUiState): Color = when {
     !state.hasLocationPermission -> STATUS_ERROR_COLOR
     state.locationQuality == LocationQuality.GOOD -> SiagaNextGreen
     state.locationQuality == LocationQuality.FAIR -> STATUS_CAUTION_COLOR
@@ -3564,13 +3480,13 @@ private fun gpsStatusMessage(state: EvacuationUiState): String {
     }
 }
 
-private fun networkStatusColor(isAvailable: Boolean?): Color = when (isAvailable) {
+internal fun networkStatusColor(isAvailable: Boolean?): Color = when (isAvailable) {
     true -> SiagaNextGreen
     false -> STATUS_ERROR_COLOR
     null -> STATUS_UNKNOWN_COLOR
 }
 
-private fun bmkgStatusColor(state: EvacuationUiState): Color = when {
+internal fun bmkgStatusColor(state: EvacuationUiState): Color = when {
     state.bmkgErrorMessage != null -> STATUS_ERROR_COLOR
     state.bmkgStatus?.hasTsunamiPotential == true -> STATUS_ERROR_COLOR
     state.bmkgStatus?.isStale == true -> STATUS_CAUTION_COLOR
@@ -3594,13 +3510,13 @@ private fun zoneLegendDisplayColor(baseColor: Color, mapOpacity: Float): Color {
     )
 }
 
-private enum class StatusDetailType {
+internal enum class StatusDetailType {
     GPS,
     NETWORK,
     BMKG,
 }
 
-private enum class MapPanelValue {
+internal enum class MapPanelValue {
     COLLAPSED,
     EXPANDED,
 }
@@ -3611,9 +3527,12 @@ private val MAP_PANEL_SPRING = spring<Float>(
 )
 
 private const val OBSTRUCTION_MESSAGE_VISIBLE_MILLIS = 8_000L
+private val TOP_BAR_SPACE = 76.dp
+private val MAP_HANDLE_SPACE = 28.dp
+private val MIN_COLLAPSED_MAP_HEIGHT = 170.dp
 private const val FIGMA_WIDTH_DP = 390f
 private const val FIGMA_MAP_HEIGHT_DP = 269f
-private const val WALKING_SPEED_METERS_PER_SECOND = 1.2
+internal const val WALKING_SPEED_METERS_PER_SECOND = 1.2
 private const val ROUTE_CHANGE_NOTICE_MILLIS = 3_500L
 private const val ZONE_STATUS_NOTICE_MILLIS = 5_000L
 private const val MANEUVER_NOW_DISTANCE_METERS = 20
@@ -3631,7 +3550,7 @@ private const val ZONE_SAFE_MAP_OPACITY = 0.10f
 private const val ZONE_LOW_MAP_OPACITY = 0.12f
 private const val ZONE_MEDIUM_MAP_OPACITY = 0.14f
 private const val ZONE_HIGH_MAP_OPACITY = 0.16f
-private val STATUS_CAUTION_COLOR = Color(0xFFFFD166)
-private val STATUS_ERROR_COLOR = Color(0xFFFF6B6B)
+internal val STATUS_CAUTION_COLOR = Color(0xFFFFD166)
+internal val STATUS_ERROR_COLOR = Color(0xFFFF6B6B)
 private val STATUS_UNKNOWN_COLOR = Color(0xFFB9C4C9)
-private val BMKG_INFO_COLOR = Color(0xFF28AEFF)
+internal val BMKG_INFO_COLOR = Color(0xFF28AEFF)

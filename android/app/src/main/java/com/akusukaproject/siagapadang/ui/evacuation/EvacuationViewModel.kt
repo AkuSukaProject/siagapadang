@@ -280,110 +280,172 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun selectAlternativeDestination() {
+    /**
+     * Menangani tombol "Ada kendala?". Semua keputusan diambil dari data lokal tanpa jaringan.
+     *
+     * - Jalan tidak bisa dilewati: cari jalan memutar ke TES yang sama lewat simpang tetangga;
+     *   bila tidak ada atau lebih lambat, pindah ke alternatif tujuan (rank 2/3).
+     * - Tidak bisa masuk ke TES/TEA: langsung ke alternatif tujuan tanpa melaporkan jalan.
+     */
+    fun reportEvacuationObstacle(type: EvacuationObstacleType) {
         val currentState = mutableUiState.value
         val currentRoute = currentState.route ?: return
         val currentLocation = currentState.currentLocation ?: return
         if (!currentState.canReportBlockedRoute || routeJob?.isActive == true) return
 
-        val blockedEdgeId = currentState.activeEdgeId
+        val isRoadBlocked = type == EvacuationObstacleType.ROAD_BLOCKED
+        val blockedEdgeId = currentState.activeEdgeId.takeIf { isRoadBlocked }
         val updatedBlockedEdgeIds = if (blockedEdgeId != null) {
             currentState.blockedEdgeIds + blockedEdgeId
         } else {
             currentState.blockedEdgeIds
         }
-
-        if (currentState.remainingAlternativeCount <= 0) {
-            val directOrientation = DirectOrientationCalculator.calculate(
-                currentLocation = currentLocation,
-                destinationName = currentRoute.destinationName,
-                destinationCoordinate = currentRoute.destinationCoordinate,
-                routeCoordinates = currentRoute.coordinates,
-            )
-            if (directOrientation == null) {
-                mutableUiState.update { state ->
-                    state.copy(
-                        errorMessage = "Tidak ada rute jalan atau titik tujuan yang dapat digunakan untuk orientasi.",
-                    )
-                }
-                return
-            }
-            rejectedDestinationNames += currentRoute.destinationName
-            resetRouteProgress()
-            mutableUiState.update { state ->
-                state.copy(
-                    previousRoutes = (state.previousRoutes + currentRoute)
-                        .distinctBy { previousRoute -> previousRoute.destinationName },
-                    directOrientation = directOrientation,
-                    guidance = null,
-                    activeEdgeId = null,
-                    alternativeRouteVersion = state.alternativeRouteVersion + 1,
-                    alternativeRouteMessage = "Semua rute jalan telah ditolak. Orientasi garis lurus diaktifkan.",
-                    blockedEdgeIds = updatedBlockedEdgeIds,
-                    errorMessage = null,
-                )
-            }
-            queueObstructionReport(
-                blockedEdgeId = blockedEdgeId,
-                location = currentLocation,
-                message = "Rute terakhir ditandai terhalang. Orientasi terakhir ditampilkan.",
-            )
-            return
-        }
+        val excludedEdgeIds = updatedBlockedEdgeIds + currentState.confirmedBlockedEdgeIds
 
         routeJob = viewModelScope.launch {
             mutableUiState.update { it.copy(isLoadingRoute = true, errorMessage = null) }
-            runCatching {
-                repository.findAlternativeRoute(
-                    location = currentLocation,
-                    currentRoute = currentRoute,
-                    excludedDestinationNames = rejectedDestinationNames,
-                    excludedEdgeIds = updatedBlockedEdgeIds + currentState.confirmedBlockedEdgeIds,
-                )
-            }.onSuccess { route ->
-                rejectedDestinationNames += currentRoute.destinationName
-                arrivalTracker.reset()
-                resetRouteProgress()
-                mutableUiState.update { state ->
-                    withGuidance(
-                        state.copy(
-                            route = route,
-                            previousRoutes =
-                                (state.previousRoutes + currentRoute)
-                                    .distinctBy { previousRoute -> previousRoute.destinationName },
-                            isLoadingRoute = false,
-                            remainingAlternativeCount =
-                                (state.remainingAlternativeCount - 1).coerceAtLeast(0),
-                            alternativeRouteVersion = state.alternativeRouteVersion + 1,
-                            alternativeRouteMessage = buildAlternativeRouteMessage(
-                                previousRoute = currentRoute,
-                                newRoute = route,
-                            ),
-                            directOrientation = null,
-                            hasArrived = false,
-                            arrivalReason = null,
-                            arrivalDistanceMeters = null,
-                            checkinStatus = CheckinStatus.IDLE,
-                            checkinMessage = null,
-                            checkedInAt = null,
-                            blockedEdgeIds = updatedBlockedEdgeIds,
-                        ),
+            val detour = if (isRoadBlocked) {
+                runCatching {
+                    repository.findDetourToSameDestination(
+                        location = currentLocation,
+                        currentRoute = currentRoute,
+                        blockedEdgeId = blockedEdgeId,
+                        blockedEdgeIds = excludedEdgeIds,
+                    )
+                }.getOrNull()
+            } else {
+                null
+            }
+            Log.i(
+                LOG_TAG,
+                "Kendala $type: jalan memutar ke TES sama ${if (detour != null) "ditemukan (${detour.estimatedSeconds} s)" else "tidak ada"}",
+            )
+            val alternative = if (currentState.remainingAlternativeCount > 0) {
+                runCatching {
+                    repository.findAlternativeRoute(
+                        location = currentLocation,
+                        currentRoute = currentRoute,
+                        excludedDestinationNames = rejectedDestinationNames,
+                        excludedEdgeIds = excludedEdgeIds,
+                    )
+                }.getOrNull()
+            } else {
+                null
+            }
+
+            when {
+                detour != null && (alternative == null || detour.estimatedSeconds <= alternative.estimatedSeconds) ->
+                    applyNewRoute(
+                        currentRoute = currentRoute,
+                        newRoute = detour,
+                        consumesAlternative = false,
+                        message = "Jalan dialihkan. Tetap menuju ${detour.destinationName} lewat jalan lain.",
+                        blockedEdgeIds = updatedBlockedEdgeIds,
+                    )
+                alternative != null -> {
+                    rejectedDestinationNames += currentRoute.destinationName
+                    applyNewRoute(
+                        currentRoute = currentRoute,
+                        newRoute = alternative,
+                        consumesAlternative = true,
+                        message = buildAlternativeRouteMessage(currentRoute, alternative),
+                        blockedEdgeIds = updatedBlockedEdgeIds,
                     )
                 }
+                isRoadBlocked -> showDirectOrientation(currentRoute, currentLocation, updatedBlockedEdgeIds)
+                else -> mutableUiState.update {
+                    it.copy(
+                        isLoadingRoute = false,
+                        alternativeRouteVersion = it.alternativeRouteVersion + 1,
+                        alternativeRouteMessage =
+                            "Tidak ada alternatif tujuan lain di data. Ikuti arahan petugas di lokasi.",
+                    )
+                }
+            }
 
+            if (isRoadBlocked) {
                 queueObstructionReport(
                     blockedEdgeId = blockedEdgeId,
                     location = currentLocation,
                     message = "Rute dialihkan. Laporan jalan terhalang sedang diproses...",
                 )
-            }.onFailure { error ->
-                mutableUiState.update {
-                    it.copy(
-                        isLoadingRoute = false,
-                        errorMessage = error.message ?: "Alternatif tujuan tidak dapat dimuat.",
-                    )
-                }
             }
+        }
+    }
+
+    private fun applyNewRoute(
+        currentRoute: EvacuationRoute,
+        newRoute: EvacuationRoute,
+        consumesAlternative: Boolean,
+        message: String,
+        blockedEdgeIds: Set<Long>,
+    ) {
+        arrivalTracker.reset()
+        resetRouteProgress()
+        mutableUiState.update { state ->
+            withGuidance(
+                state.copy(
+                    route = newRoute,
+                    previousRoutes = if (newRoute.destinationName == currentRoute.destinationName) {
+                        state.previousRoutes
+                    } else {
+                        (state.previousRoutes + currentRoute).distinctBy { it.destinationName }
+                    },
+                    isLoadingRoute = false,
+                    remainingAlternativeCount = if (consumesAlternative) {
+                        (state.remainingAlternativeCount - 1).coerceAtLeast(0)
+                    } else {
+                        state.remainingAlternativeCount
+                    },
+                    alternativeRouteVersion = state.alternativeRouteVersion + 1,
+                    alternativeRouteMessage = message,
+                    directOrientation = null,
+                    hasArrived = false,
+                    arrivalReason = null,
+                    arrivalDistanceMeters = null,
+                    checkinStatus = CheckinStatus.IDLE,
+                    checkinMessage = null,
+                    checkedInAt = null,
+                    blockedEdgeIds = blockedEdgeIds,
+                ),
+            )
+        }
+    }
+
+    private fun showDirectOrientation(
+        currentRoute: EvacuationRoute,
+        currentLocation: GeoCoordinate,
+        blockedEdgeIds: Set<Long>,
+    ) {
+        val directOrientation = DirectOrientationCalculator.calculate(
+            currentLocation = currentLocation,
+            destinationName = currentRoute.destinationName,
+            destinationCoordinate = currentRoute.destinationCoordinate,
+            routeCoordinates = currentRoute.coordinates,
+        )
+        if (directOrientation == null) {
+            mutableUiState.update { state ->
+                state.copy(
+                    isLoadingRoute = false,
+                    errorMessage = "Tidak ada rute jalan atau titik tujuan yang dapat digunakan untuk orientasi.",
+                )
+            }
+            return
+        }
+        rejectedDestinationNames += currentRoute.destinationName
+        resetRouteProgress()
+        mutableUiState.update { state ->
+            state.copy(
+                isLoadingRoute = false,
+                previousRoutes = (state.previousRoutes + currentRoute).distinctBy { it.destinationName },
+                directOrientation = directOrientation,
+                guidance = null,
+                activeEdgeId = null,
+                alternativeRouteVersion = state.alternativeRouteVersion + 1,
+                alternativeRouteMessage = "Semua rute jalan telah ditolak. Orientasi garis lurus diaktifkan.",
+                blockedEdgeIds = blockedEdgeIds,
+                errorMessage = null,
+            )
         }
     }
 

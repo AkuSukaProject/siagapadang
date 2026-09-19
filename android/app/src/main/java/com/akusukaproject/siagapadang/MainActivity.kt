@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.akusukaproject.siagapadang.ui.evacuation.EvacuationScreen
 import com.akusukaproject.siagapadang.ui.familyplan.FamilyPlanScreen
+import com.akusukaproject.siagapadang.ui.menu.MenuScreen
 import com.akusukaproject.siagapadang.ui.theme.SiagaPadangTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,20 +28,26 @@ class MainActivity : ComponentActivity() {
             intent.getBooleanExtra(EXTRA_SHOW_ARRIVAL_EVIDENCE, false)
         setContent {
             SiagaPadangTheme {
-                var isFamilyPlanOpen by rememberSaveable { mutableStateOf(false) }
-                if (isFamilyPlanOpen) {
-                    FamilyPlanScreen(onBack = { isFamilyPlanOpen = false })
-                } else {
-                    EvacuationScreen(
+                var screen by rememberSaveable { mutableStateOf(AppScreen.EVACUATION) }
+                when (screen) {
+                    AppScreen.EVACUATION -> EvacuationScreen(
                         showArrivalEvidence = showArrivalEvidence,
                         evidenceDestinationName = EVIDENCE_DESTINATION_NAME,
                         evidenceDestinationCapacity = EVIDENCE_DESTINATION_CAPACITY,
-                        onOpenFamilyPlan = { isFamilyPlanOpen = true },
+                        onOpenMenu = { screen = AppScreen.MENU },
                     )
+                    AppScreen.MENU -> MenuScreen(
+                        onBack = { screen = AppScreen.EVACUATION },
+                        onOpenFamilyPlan = { screen = AppScreen.FAMILY_PLAN },
+                    )
+                    AppScreen.FAMILY_PLAN -> FamilyPlanScreen(onBack = { screen = AppScreen.MENU })
                 }
             }
         }
     }
+
+    /** Layar evakuasi selalu menjadi layar awal; halaman lain adalah persiapan masa tenang. */
+    private enum class AppScreen { EVACUATION, MENU, FAMILY_PLAN }
 
     private companion object {
         const val EXTRA_SHOW_ARRIVAL_EVIDENCE = "show_arrival_evidence"

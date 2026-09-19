@@ -8,6 +8,7 @@ import com.akusukaproject.siagapadang.data.model.EvacuationSummary
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.OfflineRoadOverlay
 import com.akusukaproject.siagapadang.domain.AlternativeRouteSelector
+import com.akusukaproject.siagapadang.domain.DetourSelector
 import com.akusukaproject.siagapadang.domain.NearestNodeFinder
 import com.akusukaproject.siagapadang.domain.PolylineAssembler
 import kotlinx.coroutines.Dispatchers
@@ -95,13 +96,72 @@ class EvacuationRepository(
         val routeRow = dao.findRoute(originNodeId)
             ?: throw IllegalStateException("Rute evakuasi tidak tersedia untuk lokasi ini")
         val selection = routeRow.select(rank)
-        val pathNodeIds = selection.path
-            .split(',')
-            .map { value ->
-                value.trim().toLongOrNull()
-                    ?: throw IllegalStateException("Data node pada rute tidak valid")
+        return buildRoute(
+            originNodeId = originNodeId,
+            rank = rank,
+            destinationName = selection.destinationName,
+            estimatedSeconds = (selection.etaMinutes * 60.0).roundToInt(),
+            pathNodeIds = parsePath(selection.path),
+        )
+    }
+
+    /**
+     * Jalan memutar ke TES yang sama lewat simpang tetangga dari simpang sebelum ruas terhalang.
+     * Hanya membaca rute prakomputasi milik simpang tetangga; mengembalikan null bila tidak ada.
+     */
+    suspend fun findDetourToSameDestination(
+        location: GeoCoordinate,
+        currentRoute: EvacuationRoute,
+        blockedEdgeId: Long?,
+        blockedEdgeIds: Set<Long>,
+    ): EvacuationRoute? {
+        val blockedIndex = blockedEdgeId?.let(currentRoute.edgeIds::indexOf) ?: -1
+        val startNodeId = currentRoute.nodeIds.getOrNull(blockedIndex)
+            ?: findNearestNode(location).nodeId
+        val candidates = mutableListOf<EvacuationRoute>()
+        for (connector in dao.findEdgesTouchingNode(startNodeId)) {
+            if (connector.edgeId in blockedEdgeIds) continue
+            val neighborId = if (connector.u == startNodeId) connector.v else connector.u
+            val row = dao.findRoute(neighborId) ?: continue
+            for (rank in 1..3) {
+                val selection = row.select(rank)
+                if (selection.destinationName != currentRoute.destinationName) continue
+                val neighborPath = runCatching { parsePath(selection.path) }.getOrNull() ?: continue
+                val walkSeconds = connector.length / WALKING_SPEED_METERS_PER_SECOND
+                candidates += runCatching {
+                    buildRoute(
+                        originNodeId = startNodeId,
+                        rank = currentRoute.rank,
+                        destinationName = selection.destinationName,
+                        estimatedSeconds = (walkSeconds + selection.etaMinutes * 60.0).roundToInt(),
+                        pathNodeIds = listOf(startNodeId) + neighborPath,
+                    )
+                }.getOrNull() ?: continue
             }
-        require(pathNodeIds.size >= 2) { "Data rute terlalu pendek" }
+        }
+        return DetourSelector.select(
+            startNodeId = startNodeId,
+            destinationName = currentRoute.destinationName,
+            candidates = candidates,
+            blockedEdgeIds = blockedEdgeIds,
+        )
+    }
+
+    private fun parsePath(path: String): List<Long> = path
+        .split(',')
+        .map { value ->
+            value.trim().toLongOrNull()
+                ?: throw IllegalStateException("Data node pada rute tidak valid")
+        }
+        .also { require(it.size >= 2) { "Data rute terlalu pendek" } }
+
+    private suspend fun buildRoute(
+        originNodeId: Long,
+        rank: Int,
+        destinationName: String,
+        estimatedSeconds: Int,
+        pathNodeIds: List<Long>,
+    ): EvacuationRoute {
 
         val distinctNodeIds = pathNodeIds.distinct()
         val edges = dao.findEdgesForNodes(distinctNodeIds)
@@ -111,13 +171,13 @@ class EvacuationRepository(
         val assembled = withContext(Dispatchers.Default) {
             PolylineAssembler.assembleWithEdges(pathNodeIds, edges, nodeCoordinates)
         }
-        val destination = dao.findTesByName(selection.destinationName)
+        val destination = dao.findTesByName(destinationName)
 
         return EvacuationRoute(
             originNodeId = originNodeId,
             rank = rank,
-            destinationName = selection.destinationName,
-            estimatedSeconds = (selection.etaMinutes * 60.0).roundToInt(),
+            destinationName = destinationName,
+            estimatedSeconds = estimatedSeconds,
             coordinates = assembled.coordinates,
             destinationCoordinate = destination?.let { tes ->
                 GeoCoordinate(latitude = tes.lat, longitude = tes.lon)
@@ -125,6 +185,7 @@ class EvacuationRepository(
             destinationCapacityPeople = destination?.kapasitas?.roundToInt(),
             destinationZoneCode = destination?.zona,
             destinationExternalId = destination?.tesId,
+            nodeIds = pathNodeIds,
             edgeIds = assembled.edgeIds,
             edgeCoordinateRanges = assembled.edgeCoordinateRanges,
             datasetVersion = datasetVersion,

@@ -101,4 +101,15 @@ interface EvacuationDao {
         """,
     )
     suspend fun findAllTes(): List<TesRow>
+
+    // tb_edges hanya menyimpan satu arah, jadi tetangga dicari dari kedua ujung ruas.
+    @SkipQueryVerification
+    @Query(
+        """
+        SELECT edge_id, u, v, length, geometry
+        FROM tb_edges
+        WHERE u = :nodeId OR v = :nodeId
+        """,
+    )
+    suspend fun findEdgesTouchingNode(nodeId: Long): List<EdgeRow>
 }

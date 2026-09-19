@@ -12,6 +12,12 @@ import com.akusukaproject.siagapadang.data.remote.model.OccupancyStatusResponseD
 import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import com.akusukaproject.siagapadang.domain.DirectOrientation
 
+/** Jenis kendala yang dipilih pengguna dari tombol "Ada kendala?". */
+enum class EvacuationObstacleType {
+    ROAD_BLOCKED,
+    DESTINATION_UNREACHABLE,
+}
+
 data class EvacuationUiState(
     val hasLocationPermission: Boolean = false,
     val familyMeetingPointName: String? = null,
