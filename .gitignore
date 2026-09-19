@@ -32,3 +32,6 @@ spatial/data/
 .idea/
 .vscode/
 .DS_Store
+
+# Clone lokal Hugging Face Space (deploy lewat GitHub Actions, bukan isi repo)
+hf-space/
