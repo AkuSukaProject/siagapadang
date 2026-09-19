@@ -22,7 +22,9 @@ import org.maplibre.android.offline.OfflineManager
 class SiagaPadangApplication : Application() {
     val datasetStorage by lazy { DatasetStorage(this) }
     val database by lazy { SiagaPadangDatabase.getInstance(this, datasetStorage) }
-    val evacuationRepository by lazy { EvacuationRepository(database.evacuationDao()) }
+    val evacuationRepository by lazy {
+        EvacuationRepository(database.evacuationDao(), datasetStorage.localManifest().version)
+    }
     val zoneRepository by lazy { ZoneRepository(database.zoneDao()) }
     val locationProvider by lazy { LocationProvider(this) }
     val compassProvider by lazy { CompassProvider(this) }

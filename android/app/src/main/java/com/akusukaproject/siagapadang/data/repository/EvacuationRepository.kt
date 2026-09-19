@@ -185,7 +185,7 @@ class EvacuationRepository(
     )
 
     companion object {
-        const val DEFAULT_DATASET_VERSION = "2026.09.13"
+        const val DEFAULT_DATASET_VERSION = "2026.09.19"
         val SEARCH_WINDOWS = listOf(0.005, 0.02)
         const val WALKING_SPEED_METERS_PER_SECOND = 1.2
         const val ROAD_VIEWPORT_GRID_DEGREES = 0.006
