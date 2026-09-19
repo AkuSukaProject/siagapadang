@@ -12,15 +12,15 @@ from app.services.dataset_packages import (
 )
 import json
 from urllib.parse import quote
-from typing import List
+from typing import List, Optional
 
 router = APIRouter()
 
 @router.get("/check", response_model=SyncCheckResponse)
 def check_updates(
-    dataset_name: str | None = Query(default=None),
-    current_version: str | None = Query(default=None),
-    current_checksum: str | None = Query(default=None),
+    dataset_name: Optional[str] = Query(default=None),
+    current_version: Optional[str] = Query(default=None),
+    current_checksum: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """
@@ -55,19 +55,30 @@ def check_updates(
         versions.append(item)
 
     if current_checksum:
-        has_update = any(
-            version.checksum.casefold() != current_checksum.casefold()
-            and (
-                current_version is None
-                or remote_version_is_newer(version.version, current_version)
-            )
-            for version in latest_versions
-        )
+        # Resolve current_version dari database untuk perbandingan yang lebih kuat
+        current_db_version = None
+        if current_version:
+            current_db_version = db.query(DataVersion).filter_by(version=current_version).first()
+            
+        has_update = False
+        for version in latest_versions:
+            if not version.version or not version.checksum:
+                continue
+            if version.checksum.casefold() != current_checksum.casefold():
+                if current_db_version and version.id > current_db_version.id:
+                    has_update = True
+                elif not current_db_version and (current_version is None or remote_version_is_newer(version.version, current_version)):
+                    has_update = True
     elif current_version:
-        has_update = any(
-            remote_version_is_newer(version.version, current_version)
-            for version in latest_versions
-        )
+        current_db_version = db.query(DataVersion).filter_by(version=current_version).first()
+        has_update = False
+        for version in latest_versions:
+            if not version.version:
+                continue
+            if current_db_version and version.id > current_db_version.id:
+                has_update = True
+            elif not current_db_version and remote_version_is_newer(version.version, current_version):
+                has_update = True
     else:
         has_update = bool(latest_versions)
     
@@ -134,7 +145,7 @@ def get_sync_shelters(db: Session = Depends(get_db)):
     
 @router.get("/network", response_class=FileResponse)
 def get_sync_network(
-    version: str | None = Query(default=None),
+    version: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """
@@ -156,6 +167,9 @@ def get_sync_network(
         raise HTTPException(status_code=503, detail="Paket dataset belum tersedia di server.") from error
     except ValueError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+    if not active.version or not active.checksum:
+        raise HTTPException(status_code=500, detail="Data versi atau checksum tidak valid di server.")
 
     safe_version = "".join(
         character if character.isalnum() or character in ".-_" else "_"

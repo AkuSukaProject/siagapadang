@@ -102,15 +102,31 @@ class EmergencyEvent(Base):
     external_event_id = Column(String, unique=True, nullable=True, index=True)
     source = Column(String, nullable=False) # e.g. "BMKG"
     status = Column(Enum(EventStatus), default=EventStatus.DRAFT)
+    is_simulation = Column(Boolean, default=False, nullable=False)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
     
     __table_args__ = (
-        Index('uq_single_active_tsunami_event', 'status', postgresql_where=(status == 'ACTIVE'), unique=True),
+        Index('uq_single_active_tsunami_event', 'status', 'is_simulation', postgresql_where=(status == 'ACTIVE'), unique=True),
     )
     
     checkins = relationship("Checkin", back_populates="event")
     obstructions = relationship("Obstruction", back_populates="event")
+    status_history = relationship("EventStatusHistory", back_populates="event", cascade="all, delete-orphan")
+
+class EventStatusHistory(Base):
+    """Log Audit Perubahan Status Kejadian Darurat"""
+    __tablename__ = "event_status_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("emergency_events.id"), nullable=False, index=True)
+    old_status = Column(Enum(EventStatus), nullable=True)
+    new_status = Column(Enum(EventStatus), nullable=False)
+    operator_name = Column(String, nullable=False)
+    change_reason = Column(String, nullable=True)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    event = relationship("EmergencyEvent", back_populates="status_history")
 
 class Checkin(Base):
     """Penanda keselamatan warga di TES/TEA"""

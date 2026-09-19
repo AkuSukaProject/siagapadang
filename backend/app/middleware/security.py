@@ -59,3 +59,38 @@ def get_device_id(request: Request) -> str:
     RATE_LIMIT_STORE[rate_limit_key].append(current_time)
     
     return device_hash
+
+# Admin API Keys config
+ADMIN_API_KEYS_STR = os.getenv("ADMIN_API_KEYS")
+# Format expected: sheva:xxx,habib:yyy
+ADMIN_API_KEYS_MAP = {}
+if ADMIN_API_KEYS_STR:
+    for pair in ADMIN_API_KEYS_STR.split(","):
+        if ":" in pair:
+            operator_name, token = pair.split(":", 1)
+            ADMIN_API_KEYS_MAP[token.strip()] = operator_name.strip()
+
+def verify_admin_token(request: Request) -> str:
+    """
+    Dependency untuk memvalidasi token otorisasi admin (Bearer token)
+    dan mengembalikan nama operator berdasarkan konfigurasi ADMIN_API_KEYS.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Autentikasi admin (Bearer token) diperlukan."
+        )
+        
+    token = auth_header.replace("Bearer ", "").strip()
+    
+    # Secure comparison against known tokens
+    for known_token, operator_name in ADMIN_API_KEYS_MAP.items():
+        if hmac.compare_digest(token.encode('utf-8'), known_token.encode('utf-8')):
+            return operator_name
+            
+    raise HTTPException(
+        status_code=401,
+        detail="Token admin tidak valid."
+    )
+
