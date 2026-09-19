@@ -1,5 +1,23 @@
 package com.akusukaproject.siagapadang.ui.evacuation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -283,6 +301,30 @@ internal fun InstructionCardV3(
     }
 }
 
+/** Angka waktu yang setiap digitnya bergulir saat berubah, agar hitung mundur terlihat berjalan. */
+@Composable
+internal fun RollingDuration(text: String, fontSize: Int, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.semantics(mergeDescendants = true) { contentDescription = text }) {
+        text.forEachIndexed { index, char ->
+            AnimatedContent(
+                targetState = char,
+                transitionSpec = {
+                    (slideInVertically(tween(260)) { -it / 2 } + fadeIn(tween(260))) togetherWith
+                        (slideOutVertically(tween(260)) { it / 2 } + fadeOut(tween(200)))
+                },
+                label = "digit-$index",
+            ) { digit ->
+                Text(
+                    text = digit.toString(),
+                    fontSize = fontSize.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1).sp,
+                )
+            }
+        }
+    }
+}
+
 /** Nada kartu waktu: putih bila waktu cukup, kuning bila mepet, merah bata bila tidak cukup. */
 internal enum class TimeTone { ENOUGH, TIGHT, NOT_ENOUGH }
 
@@ -326,12 +368,7 @@ internal fun TimeCardV3(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("SISA WAKTU", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = secondary, letterSpacing = 0.5.sp)
-                    Text(
-                        text = formatDuration(remainingSeconds),
-                        fontSize = 40.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-1).sp,
-                    )
+                    RollingDuration(text = formatDuration(remainingSeconds), fontSize = 40)
                 }
                 Box(
                     modifier = Modifier
@@ -345,6 +382,28 @@ internal fun TimeCardV3(
                     Text("±$walkingMinutes mnt", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
                     Text("${formatDistance(remainingDistance)} ke tujuan", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = secondary)
                 }
+            }
+            Spacer(Modifier.height(10.dp))
+            // Bilah yang menyusut setiap detik menandakan hitung mundur sedang berjalan.
+            val progress by animateFloatAsState(
+                targetValue = (remainingSeconds / EvacuationUiState.EVACUATION_WINDOW_SECONDS.toFloat()).coerceIn(0f, 1f),
+                animationSpec = tween(durationMillis = 900, easing = LinearEasing),
+                label = "sisa-waktu",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(primary.copy(alpha = 0.15f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(6.dp)
+                        .clip(CircleShape)
+                        .background(if (tone == TimeTone.ENOUGH) SiagaNavy else primary),
+                )
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -467,58 +526,81 @@ internal fun ObstacleSheet(
     onDismiss: () -> Unit,
     onSelect: (EvacuationObstacleType) -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxSize().clickable(onClick = onDismiss), contentAlignment = Alignment.BottomCenter) {
-            Surface(
-                color = Color.White,
-                contentColor = SiagaNavy,
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = false, onClick = {}),
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+    val visibleState = remember { MutableTransitionState(false) }.apply { targetState = true }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun close(action: () -> Unit) {
+        pendingAction = action
+        visibleState.targetState = false
+    }
+    LaunchedEffect(visibleState.currentState, visibleState.isIdle) {
+        if (visibleState.isIdle && !visibleState.currentState) pendingAction?.invoke()
+    }
+    Dialog(
+        onDismissRequest = { close(onDismiss) },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            AnimatedVisibility(visibleState = visibleState, enter = fadeIn(tween(UI_ANIMATION_MILLIS)), exit = fadeOut(tween(UI_ANIMATION_MILLIS))) {
+                Box(
                     modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+                        .fillMaxSize()
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { close(onDismiss) },
+                )
+            }
+            AnimatedVisibility(
+                visibleState = visibleState,
+                enter = slideInVertically(tween(UI_ANIMATION_MILLIS, easing = FastOutSlowInEasing)) { it },
+                exit = slideOutVertically(tween(UI_ANIMATION_MILLIS, easing = FastOutSlowInEasing)) { it },
+            ) {
+                Surface(
+                    color = Color.White,
+                    contentColor = SiagaNavy,
+                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Box(Modifier.size(width = 40.dp, height = 5.dp).clip(CircleShape).background(Color(0xFFC9CED6)))
-                    Text("Apa kendalanya?", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.semantics { heading() })
-                    Text("Rute di HP langsung diganti. Tidak perlu internet.", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = SiagaTextSecondary)
-                    ObstacleOption(
-                        iconRes = R.drawable.ic_ms_block,
-                        iconBackground = SiagaWarning,
-                        iconTint = SiagaNavy,
-                        title = "Jalan tidak bisa dilewati",
-                        description = if (hasAlternativeRoute) {
-                            "Cari jalan lain ke TES yang sama. Jika tidak ada, ke alternatif tujuan."
-                        } else {
-                            "Cari jalan lain ke TES yang sama. Jika tidak ada, tampilkan orientasi terakhir."
-                        },
-                        onClick = { onSelect(EvacuationObstacleType.ROAD_BLOCKED) },
-                    )
-                    ObstacleOption(
-                        iconRes = R.drawable.ic_ms_door_front,
-                        iconBackground = Color(0xFFFBE3D9),
-                        iconTint = SiagaRustDeep,
-                        title = "Tidak bisa masuk ke TES/TEA",
-                        description = "Cari alternatif tujuan terdekat.",
-                        onClick = { onSelect(EvacuationObstacleType.DESTINATION_UNREACHABLE) },
-                    )
-                    Surface(
-                        color = Color(0xFFEEF1F5),
-                        contentColor = SiagaNavy,
-                        shape = RoundedCornerShape(18.dp),
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 56.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable(role = Role.Button, onClick = onDismiss),
+                            .navigationBarsPadding()
+                            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("Batal", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Box(Modifier.size(width = 40.dp, height = 5.dp).clip(CircleShape).background(Color(0xFFC9CED6)))
+                        Text("Apa kendalanya?", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.semantics { heading() })
+                        Text("Rute di HP langsung diganti. Tidak perlu internet.", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = SiagaTextSecondary)
+                        ObstacleOption(
+                            iconRes = R.drawable.ic_ms_block,
+                            iconBackground = SiagaWarning,
+                            iconTint = SiagaNavy,
+                            title = "Jalan tidak bisa dilewati",
+                            description = if (hasAlternativeRoute) {
+                                "Cari jalan lain ke TES yang sama. Jika tidak ada, ke alternatif tujuan."
+                            } else {
+                                "Cari jalan lain ke TES yang sama. Jika tidak ada, tampilkan orientasi terakhir."
+                            },
+                            onClick = { close { onSelect(EvacuationObstacleType.ROAD_BLOCKED) } },
+                        )
+                        ObstacleOption(
+                            iconRes = R.drawable.ic_ms_door_front,
+                            iconBackground = Color(0xFFFBE3D9),
+                            iconTint = SiagaRustDeep,
+                            title = "Tidak bisa masuk ke TES/TEA",
+                            description = "Cari alternatif tujuan terdekat.",
+                            onClick = { close { onSelect(EvacuationObstacleType.DESTINATION_UNREACHABLE) } },
+                        )
+                        Surface(
+                            color = Color(0xFFEEF1F5),
+                            contentColor = SiagaNavy,
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .clickable(role = Role.Button) { close(onDismiss) },
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("Batal", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

@@ -35,3 +35,6 @@ spatial/data/
 
 # Clone lokal Hugging Face Space (deploy lewat GitHub Actions, bukan isi repo)
 hf-space/
+
+# Output build alternatif saat folder build dikunci IDE
+android/app/build-verify/

@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.view.GestureDetector
 import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -128,11 +129,25 @@ fun OfflineMap(
     focusCoordinates: List<GeoCoordinate> = emptyList(),
     focusRequest: Int = 0,
     focusBottomPaddingPx: Int = 0,
+    onMapDoubleTap: (() -> Unit)? = null,
 ) {
     val latestFacilities = rememberUpdatedState(facilityMarkers)
     val latestSelectedFacility = rememberUpdatedState(selectedFacilityId)
     val latestOnFacilityClick = rememberUpdatedState(onFacilityClick)
     val context = LocalContext.current
+    val latestOnMapDoubleTap = rememberUpdatedState(onMapDoubleTap)
+    val doubleTapDetector = remember(context) {
+        GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    val handler = latestOnMapDoubleTap.value ?: return false
+                    handler()
+                    return true
+                }
+            },
+        )
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val displayRouteCoordinates = remember(routeCoordinates) {
         PolylineSimplifier.simplify(routeCoordinates)
@@ -174,6 +189,7 @@ fun OfflineMap(
         MapView(context, mapOptions).apply {
             onCreate(null)
             setOnTouchListener { view, event ->
+                doubleTapDetector.onTouchEvent(event)
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN ->
                         view.parent?.requestDisallowInterceptTouchEvent(true)
@@ -305,6 +321,8 @@ fun OfflineMap(
         factory = { mapView },
         update = { view ->
             view.getMapAsync { map ->
+                // Saat ketuk ganda dipakai untuk memperbesar panel, zoom bawaan dimatikan agar tidak bentrok.
+                map.uiSettings.isDoubleTapGesturesEnabled = onMapDoubleTap == null
                 map.style?.let { style ->
                     updateMapOverlays(
                         style = style,
@@ -689,6 +707,10 @@ private fun updateTsunamiZoneOverlays(
         geoJson = overlay.safeGeoJson,
         fill = SAFE_ZONE_FILL_COLOR,
         opacity = SAFE_ZONE_OPACITY,
+        lineLayerId = SAFE_ZONE_LINE_LAYER_ID,
+        lineColor = SAFE_ZONE_LINE_COLOR,
+        lineWidthDp = 1.5f,
+        lineDash = null,
     )
     ensureZoneLayer(
         style = style,
@@ -697,6 +719,10 @@ private fun updateTsunamiZoneOverlays(
         geoJson = overlay.lowRiskGeoJson,
         fill = LOW_RISK_ZONE_FILL_COLOR,
         opacity = LOW_RISK_ZONE_OPACITY,
+        lineLayerId = LOW_RISK_ZONE_LINE_LAYER_ID,
+        lineColor = LOW_RISK_ZONE_LINE_COLOR,
+        lineWidthDp = 1.5f,
+        lineDash = arrayOf(2f, 2f),
     )
     ensureZoneLayer(
         style = style,
@@ -705,6 +731,10 @@ private fun updateTsunamiZoneOverlays(
         geoJson = overlay.mediumRiskGeoJson,
         fill = MEDIUM_RISK_ZONE_FILL_COLOR,
         opacity = MEDIUM_RISK_ZONE_OPACITY,
+        lineLayerId = MEDIUM_RISK_ZONE_LINE_LAYER_ID,
+        lineColor = MEDIUM_RISK_ZONE_LINE_COLOR,
+        lineWidthDp = 2.2f,
+        lineDash = null,
     )
     ensureZoneLayer(
         style = style,
@@ -713,6 +743,10 @@ private fun updateTsunamiZoneOverlays(
         geoJson = overlay.highRiskGeoJson,
         fill = HIGH_RISK_ZONE_FILL_COLOR,
         opacity = HIGH_RISK_ZONE_OPACITY,
+        lineLayerId = HIGH_RISK_ZONE_LINE_LAYER_ID,
+        lineColor = HIGH_RISK_ZONE_LINE_COLOR,
+        lineWidthDp = 3.2f,
+        lineDash = null,
     )
 }
 
@@ -723,6 +757,10 @@ private fun ensureZoneLayer(
     geoJson: String,
     fill: String,
     opacity: Float,
+    lineLayerId: String,
+    lineColor: String,
+    lineWidthDp: Float,
+    lineDash: Array<Float>?,
 ) {
     if (style.getSource(sourceId) != null) return
 
@@ -731,6 +769,13 @@ private fun ensureZoneLayer(
         fillColor(fill),
         fillOpacity(opacity),
     )
+    // Garis tepi dengan ketebalan berbeda per tingkat agar zona tetap terbedakan tanpa bergantung warna saja.
+    val outlineLayer = LineLayer(lineLayerId, sourceId).withProperties(
+        lineColor(lineColor),
+        lineWidth(lineWidthDp),
+        lineOpacity(0.9f),
+        lineJoin(Property.LINE_JOIN_ROUND),
+    ).apply { lineDash?.let { setProperties(lineDasharray(it)) } }
     val navigationAnchor = listOf(
         PREVIOUS_ROUTES_LAYER_ID,
         ROUTE_LAYER_ID,
@@ -739,8 +784,10 @@ private fun ensureZoneLayer(
     ).firstOrNull { layerId -> style.getLayer(layerId) != null }
     if (navigationAnchor == null) {
         style.addLayer(fillLayer)
+        style.addLayer(outlineLayer)
     } else {
         style.addLayerBelow(fillLayer, navigationAnchor)
+        style.addLayerBelow(outlineLayer, navigationAnchor)
     }
 }
 
@@ -1035,7 +1082,16 @@ private const val SAFE_ZONE_FILL_COLOR = "#00D26A"
 private const val LOW_RISK_ZONE_FILL_COLOR = "#FFD400"
 private const val MEDIUM_RISK_ZONE_FILL_COLOR = "#FF6D00"
 private const val HIGH_RISK_ZONE_FILL_COLOR = "#FF1744"
-private const val SAFE_ZONE_OPACITY = 0.10f
-private const val LOW_RISK_ZONE_OPACITY = 0.12f
-private const val MEDIUM_RISK_ZONE_OPACITY = 0.14f
-private const val HIGH_RISK_ZONE_OPACITY = 0.16f
+// Kepekatan naik sesuai tingkat bahaya agar perbedaannya terbaca di peta terang.
+private const val SAFE_ZONE_OPACITY = 0.16f
+private const val LOW_RISK_ZONE_OPACITY = 0.18f
+private const val MEDIUM_RISK_ZONE_OPACITY = 0.26f
+private const val HIGH_RISK_ZONE_OPACITY = 0.36f
+private const val SAFE_ZONE_LINE_COLOR = "#00A152"
+private const val LOW_RISK_ZONE_LINE_COLOR = "#B38F00"
+private const val MEDIUM_RISK_ZONE_LINE_COLOR = "#E65100"
+private const val HIGH_RISK_ZONE_LINE_COLOR = "#C62828"
+private const val SAFE_ZONE_LINE_LAYER_ID = "tsunami-safe-zone-line-layer"
+private const val LOW_RISK_ZONE_LINE_LAYER_ID = "tsunami-low-risk-zone-line-layer"
+private const val MEDIUM_RISK_ZONE_LINE_LAYER_ID = "tsunami-medium-risk-zone-line-layer"
+private const val HIGH_RISK_ZONE_LINE_LAYER_ID = "tsunami-high-risk-zone-line-layer"

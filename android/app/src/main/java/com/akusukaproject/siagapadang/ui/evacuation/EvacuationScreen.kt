@@ -8,6 +8,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import com.akusukaproject.siagapadang.ui.theme.SiagaTextSecondary
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -261,6 +276,12 @@ private fun EvacuationContent(
             },
             onMapViewportChanged = onMapViewportChanged,
             modifier = Modifier.align(Alignment.BottomCenter),
+            onExpandMap = {
+                coroutineScope.launch { mapPanelState.animateTo(MapPanelValue.EXPANDED, MAP_PANEL_SPRING) }
+            },
+            onCollapseMap = {
+                coroutineScope.launch { mapPanelState.animateTo(MapPanelValue.COLLAPSED, MAP_PANEL_SPRING) }
+            },
         )
 
         val handleTop = maxHeight - mapHeight +
@@ -314,20 +335,42 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         }
-        selectedStatusDetail?.let { detail ->
+        // Detail terakhir dipertahankan selama animasi keluar agar isi popup tidak hilang mendadak.
+        var lastStatusDetail by remember { mutableStateOf(StatusDetailType.GPS) }
+        LaunchedEffect(selectedStatusDetail) { selectedStatusDetail?.let { lastStatusDetail = it } }
+        val isExpandedLayout = expansionProgress >= 0.5f
+        val statusIndex = StatusDetailType.entries.indexOf(selectedStatusDetail ?: lastStatusDetail)
+        AnimatedVisibility(
+            visible = selectedStatusDetail != null,
+            enter = fadeIn(tween(UI_ANIMATION_MILLIS)) + scaleIn(
+                initialScale = 0.9f,
+                transformOrigin = if (isExpandedLayout) TransformOrigin(0f, 0f) else TransformOrigin(1f, 0f),
+                animationSpec = tween(UI_ANIMATION_MILLIS, easing = FastOutSlowInEasing),
+            ),
+            exit = fadeOut(tween(UI_ANIMATION_MILLIS / 2)) + scaleOut(
+                targetScale = 0.95f,
+                transformOrigin = if (isExpandedLayout) TransformOrigin(0f, 0f) else TransformOrigin(1f, 0f),
+            ),
+            modifier = if (isExpandedLayout) {
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 72.dp, top = EXPANDED_HEADER_HEIGHT + 12.dp + (statusIndex * 56).dp)
+                    .zIndex(31f)
+            } else {
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 12.dp, top = 66.dp)
+                    .zIndex(31f)
+            },
+        ) {
             StatusDetailCard(
-                detail = detail,
+                detail = selectedStatusDetail ?: lastStatusDetail,
                 state = state,
                 onDismiss = { selectedStatusDetail = null },
                 onRefreshBmkgStatus = onRefreshBmkgStatus,
                 scale = scale,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 16.dp)
-                    .offset(
-                        y = if (expansionProgress < 0.5f) 66.dp else EXPANDED_HEADER_HEIGHT + 12.dp,
-                    )
-                    .zIndex(31f),
+                // Jarak penunjuk dari tepi kanan kartu ke tengah ikon (ikon 48 dp, jarak 6 dp, tepi 16 dp).
+                caretEndOffset = if (isExpandedLayout) null else (40 + (2 - statusIndex) * 54 - 12 - 8).dp,
             )
         }
 
@@ -1090,6 +1133,7 @@ private fun StatusDetailCard(
     onRefreshBmkgStatus: () -> Unit,
     scale: Float,
     modifier: Modifier = Modifier,
+    caretEndOffset: Dp? = null,
 ) {
     val title: String
     val message: String
@@ -1140,65 +1184,81 @@ private fun StatusDetailCard(
             color = bmkgStatusColor(state)
         }
     }
-    Surface(
-        color = SiagaCream,
-        contentColor = SiagaNavy,
-        shape = RoundedCornerShape((13f * scale).dp),
-        border = BorderStroke(1.dp, color),
-        shadowElevation = 8.dp,
-        modifier = modifier.width((258f * scale).dp),
-    ) {
-        Box {
-            Column(
-                verticalArrangement = Arrangement.spacedBy((5f * scale).dp),
-                modifier = Modifier.padding(
-                    start = (14f * scale).dp,
-                    top = (12f * scale).dp,
-                    end = (42f * scale).dp,
-                    bottom = (13f * scale).dp,
-                ),
+    Column(horizontalAlignment = Alignment.End, modifier = modifier.width(280.dp)) {
+        caretEndOffset?.let { offset ->
+            Canvas(
+                modifier = Modifier
+                    .padding(end = offset)
+                    .size(width = 16.dp, height = 8.dp),
             ) {
-                Text(
-                    text = title,
-                    color = SiagaNavy,
-                    fontSize = (14f * scale).sp,
-                    fontWeight = FontWeight.Bold,
+                drawPath(
+                    Path().apply {
+                        moveTo(0f, size.height)
+                        lineTo(size.width / 2f, 0f)
+                        lineTo(size.width, size.height)
+                        close()
+                    },
+                    color = Color.White,
                 )
-                Text(
-                    text = message,
-                    color = SiagaNavy.copy(alpha = 0.78f),
-                    fontSize = (11f * scale).sp,
-                    lineHeight = (15f * scale).sp,
-                )
-                if (detail == StatusDetailType.BMKG) {
-                    OutlinedButton(
-                        onClick = onRefreshBmkgStatus,
-                        enabled = !state.isLoadingBmkgStatus,
-                    ) {
-                        if (state.isLoadingBmkgStatus) {
-                            CircularProgressIndicator(
-                                color = SiagaNavy,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size((16f * scale).dp),
-                            )
-                        } else {
-                            Text("Perbarui", color = SiagaNavy)
+            }
+        }
+        Surface(
+            color = Color.White,
+            contentColor = SiagaNavy,
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 10.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Box {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 44.dp, bottom = 14.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(statusTintOnLight(color)),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Text(
+                        text = message,
+                        color = SiagaTextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    if (detail == StatusDetailType.BMKG) {
+                        OutlinedButton(
+                            onClick = onRefreshBmkgStatus,
+                            enabled = !state.isLoadingBmkgStatus,
+                            border = BorderStroke(1.dp, SiagaLine),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            if (state.isLoadingBmkgStatus) {
+                                CircularProgressIndicator(color = SiagaNavy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                            } else {
+                                Text("Perbarui", color = SiagaNavy, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
-            }
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size((44f * scale).dp),
-            ) {
-                Text(
-                    text = "×",
-                    color = SiagaNavy,
-                    fontSize = (22f * scale).sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(48.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_ms_close),
+                        contentDescription = "Tutup",
+                        tint = SiagaTextSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
@@ -1653,6 +1713,8 @@ private fun EvacuationMapPanel(
     onBlockedRouteClick: () -> Unit,
     onMapViewportChanged: (GeoCoordinate) -> Unit,
     modifier: Modifier = Modifier,
+    onExpandMap: () -> Unit = {},
+    onCollapseMap: () -> Unit = {},
 ) {
     var followUserLocation by rememberSaveable { mutableStateOf(true) }
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -1734,6 +1796,7 @@ private fun EvacuationMapPanel(
             onViewportChanged = onMapViewportChanged,
             onUserMapGesture = { followUserLocation = false },
             modifier = Modifier.fillMaxSize(),
+            onMapDoubleTap = if (expansionProgress < 0.5f) onExpandMap else null,
         )
 
         if (expansionProgress < 0.5f) {
@@ -1791,7 +1854,9 @@ private fun EvacuationMapPanel(
                 guidance = state.guidance,
                 remainingSeconds = state.remainingEvacuationSeconds,
                 scale = scale,
-                modifier = Modifier.graphicsLayer(alpha = expansionProgress),
+                modifier = Modifier
+                    .graphicsLayer(alpha = expansionProgress)
+                    .pointerInput(Unit) { detectTapGestures(onDoubleTap = { onCollapseMap() }) },
             )
 
             VerticalInstructionStrip(
@@ -1872,48 +1937,46 @@ private fun CompactTsunamiZoneIcon(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = SiagaNavy.copy(alpha = 0.92f),
+        color = Color.White,
         shape = CircleShape,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.82f)),
         shadowElevation = 4.dp,
         modifier = modifier
-            .size((39f * scale).dp)
-            .semantics { contentDescription = "Layer zona tsunami aktif" },
+            .size(44.dp)
+            .semantics { contentDescription = "Lapisan zona tsunami aktif" },
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy((2f * scale).dp),
-            modifier = Modifier.padding((10f * scale).dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(11.dp),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy((2f * scale).dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                ZoneIconCell(ZONE_SAFE_COLOR, ZONE_SAFE_MAP_OPACITY, Modifier.weight(1f))
-                ZoneIconCell(ZONE_LOW_COLOR, ZONE_LOW_MAP_OPACITY, Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                ZoneSwatch(ZoneLegendEntry.SAFE, Modifier.weight(1f))
+                ZoneSwatch(ZoneLegendEntry.LOW, Modifier.weight(1f))
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy((2f * scale).dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                ZoneIconCell(ZONE_MEDIUM_COLOR, ZONE_MEDIUM_MAP_OPACITY, Modifier.weight(1f))
-                ZoneIconCell(ZONE_HIGH_COLOR, ZONE_HIGH_MAP_OPACITY, Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                ZoneSwatch(ZoneLegendEntry.MEDIUM, Modifier.weight(1f))
+                ZoneSwatch(ZoneLegendEntry.HIGH, Modifier.weight(1f))
             }
         }
     }
 }
 
+/** Warna isian dan tepi sama dengan lapisan zona di peta. */
+private enum class ZoneLegendEntry(val label: String, val fill: Color, val mapOpacity: Float, val outline: Color, val outlineWidth: Float) {
+    SAFE("Kawasan aman", ZONE_SAFE_COLOR, ZONE_SAFE_MAP_OPACITY, Color(0xFF00A152), 1.5f),
+    LOW("Bahaya rendah", ZONE_LOW_COLOR, ZONE_LOW_MAP_OPACITY, Color(0xFFB38F00), 1.5f),
+    MEDIUM("Bahaya sedang", ZONE_MEDIUM_COLOR, ZONE_MEDIUM_MAP_OPACITY, Color(0xFFE65100), 2.2f),
+    HIGH("Bahaya tinggi", ZONE_HIGH_COLOR, ZONE_HIGH_MAP_OPACITY, Color(0xFFC62828), 3.2f),
+}
+
 @Composable
-private fun ZoneIconCell(
-    baseColor: Color,
-    mapOpacity: Float,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        color = zoneLegendDisplayColor(baseColor, mapOpacity),
-        shape = RoundedCornerShape(2.dp),
-        border = BorderStroke(0.7.dp, baseColor),
-        modifier = modifier.fillMaxSize(),
-    ) {}
+private fun ZoneSwatch(entry: ZoneLegendEntry, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(3.dp))
+            .background(zoneLegendDisplayColor(entry.fill, entry.mapOpacity))
+            .border(entry.outlineWidth.dp, entry.outline, RoundedCornerShape(3.dp)),
+    )
 }
 
 @Composable
@@ -2059,93 +2122,50 @@ private fun TsunamiZoneLegend(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Surface(
-        color = SiagaNavy.copy(alpha = 0.90f),
-        contentColor = Color.White,
-        shape = RoundedCornerShape((10f * scale).dp),
-        shadowElevation = 4.dp,
+        color = Color.White,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 6.dp,
         modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
             .clickable(role = Role.Button) { expanded = !expanded }
+            .animateContentSize(animationSpec = tween(UI_ANIMATION_MILLIS))
             .semantics {
-                contentDescription = if (expanded) {
-                    "Ciutkan keterangan zona tsunami"
-                } else {
-                    "Buka keterangan zona tsunami"
-                }
+                contentDescription = if (expanded) "Ciutkan keterangan zona tsunami" else "Buka keterangan zona tsunami"
             },
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy((5f * scale).dp),
-            modifier = Modifier.padding((7f * scale).dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy((8f * scale).dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Zona tsunami",
-                    fontSize = (10f * scale).sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = if (expanded) "−" else "+",
-                    fontSize = (14f * scale).sp,
-                    fontWeight = FontWeight.Black,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Zona tsunami", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
                 if (!expanded) {
-                    listOf(
-                        ZONE_SAFE_COLOR to ZONE_SAFE_MAP_OPACITY,
-                        ZONE_LOW_COLOR to ZONE_LOW_MAP_OPACITY,
-                        ZONE_MEDIUM_COLOR to ZONE_MEDIUM_MAP_OPACITY,
-                        ZONE_HIGH_COLOR to ZONE_HIGH_MAP_OPACITY,
-                    ).forEach { (baseColor, mapOpacity) ->
-                        Surface(
-                            color = zoneLegendDisplayColor(baseColor, mapOpacity),
-                            shape = CircleShape,
-                            border = BorderStroke(1.dp, baseColor),
-                            modifier = Modifier.size((11f * scale).dp),
-                        ) {}
+                    ZoneLegendEntry.entries.forEach { entry ->
+                        ZoneSwatch(entry, Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
                     }
                 }
+                Icon(
+                    painterResource(if (expanded) R.drawable.ic_ms_expand_more else R.drawable.ic_ms_expand_less),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
             }
             if (expanded) {
-                Row(horizontalArrangement = Arrangement.spacedBy((5f * scale).dp)) {
-                    ZoneLegendItem("Di luar rendaman", ZONE_SAFE_COLOR, ZONE_SAFE_MAP_OPACITY, scale)
-                    ZoneLegendItem("Risiko rendah", ZONE_LOW_COLOR, ZONE_LOW_MAP_OPACITY, scale)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy((5f * scale).dp)) {
-                    ZoneLegendItem("Risiko sedang", ZONE_MEDIUM_COLOR, ZONE_MEDIUM_MAP_OPACITY, scale)
-                    ZoneLegendItem("Risiko tinggi", ZONE_HIGH_COLOR, ZONE_HIGH_MAP_OPACITY, scale)
-                }
+                ZoneLegendEntry.entries.forEach { entry -> ZoneLegendItem(entry) }
             }
         }
     }
 }
 
 @Composable
-private fun ZoneLegendItem(
-    label: String,
-    baseColor: Color,
-    mapOpacity: Float,
-    scale: Float,
-) {
-    Surface(
-        color = zoneLegendDisplayColor(baseColor, mapOpacity),
-        contentColor = SiagaNavy,
-        shape = RoundedCornerShape((7f * scale).dp),
-        border = BorderStroke(1.dp, baseColor),
-        shadowElevation = 3.dp,
-    ) {
-        Text(
-            text = label,
-            color = SiagaNavy,
-            fontSize = (9f * scale).sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            modifier = Modifier.padding(
-                horizontal = (7f * scale).dp,
-                vertical = (5f * scale).dp,
-            ),
-        )
+private fun ZoneLegendItem(entry: ZoneLegendEntry) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ZoneSwatch(entry, Modifier.size(width = 22.dp, height = 16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(entry.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -2250,48 +2270,35 @@ private fun NavigationCompass(
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
+    // Rotasi dianimasikan melalui sudut terpendek agar jarum tidak berputar penuh saat melewati 0°.
+    var displayed by remember { mutableFloatStateOf(-headingDegrees) }
+    val target = -headingDegrees
+    val delta = ((target - displayed) % 360f + 540f) % 360f - 180f
+    val rotation by animateFloatAsState(
+        targetValue = displayed + delta,
+        animationSpec = tween(250),
+        label = "kompas",
+    )
+    LaunchedEffect(target) { displayed += delta }
     Surface(
-        color = SiagaCream.copy(alpha = 0.98f),
+        color = Color.White,
         contentColor = SiagaNavy,
         shape = CircleShape,
-        border = BorderStroke((2f * scale).dp, SiagaNavy),
-        shadowElevation = 7.dp,
+        shadowElevation = 6.dp,
         modifier = modifier.semantics {
             contentDescription = "Kompas, arah utara ${headingDegrees.toInt()} derajat"
         },
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding((3f * scale).dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(rotationZ = -headingDegrees),
-            ) {
+        Box(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = rotation)) {
                 CompassDial(scale = scale)
-                CompassLabel("U", Alignment.TopCenter, 10f, scale, SiagaRust)
-                CompassLabel("T", Alignment.CenterEnd, 9f, scale)
-                CompassLabel("S", Alignment.BottomCenter, 9f, scale)
-                CompassLabel("B", Alignment.CenterStart, 9f, scale)
-                CompassDiagonalLabel("BL", Alignment.TopStart, scale)
-                CompassDiagonalLabel("TL", Alignment.TopEnd, scale)
-                CompassDiagonalLabel("BD", Alignment.BottomStart, scale)
-                CompassDiagonalLabel("TG", Alignment.BottomEnd, scale)
-            }
-
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxSize(0.14f),
-            ) {
-                drawCircle(color = SiagaCream)
-                drawCircle(
-                    color = SiagaNavy,
-                    style = Stroke(width = size.minDimension * 0.16f),
+                Text(
+                    "U",
+                    color = SiagaRust,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 1.dp),
                 )
-                drawCircle(color = SiagaRust, radius = size.minDimension * 0.13f)
             }
         }
     }
@@ -2302,103 +2309,38 @@ private fun CompassDial(scale: Float) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension / 2f
-        drawCircle(
-            color = SiagaRust.copy(alpha = 0.72f),
-            radius = radius * 0.88f,
-            style = Stroke(width = (1.1f * scale).dp.toPx()),
-        )
-        drawCircle(
-            color = SiagaNavy.copy(alpha = 0.25f),
-            radius = radius * 0.70f,
-            style = Stroke(width = (0.8f * scale).dp.toPx()),
-        )
-
-        repeat(24) { index ->
-            val angle = Math.toRadians(index * 15.0 - 90.0)
-            val isCardinal = index % 6 == 0
-            val isIntercardinal = index % 3 == 0
-            val outerRadius = radius * 0.84f
-            val innerRadius = radius * when {
-                isCardinal -> 0.72f
-                isIntercardinal -> 0.76f
-                else -> 0.80f
-            }
-            val start = Offset(
-                x = center.x + cos(angle).toFloat() * innerRadius,
-                y = center.y + sin(angle).toFloat() * innerRadius,
-            )
-            val end = Offset(
-                x = center.x + cos(angle).toFloat() * outerRadius,
-                y = center.y + sin(angle).toFloat() * outerRadius,
-            )
+        repeat(12) { index ->
+            val angle = Math.toRadians(index * 30.0 - 90.0)
+            val isCardinal = index % 3 == 0
+            if (index == 0) return@repeat
+            val outer = radius * 0.92f
+            val inner = radius * if (isCardinal) 0.76f else 0.83f
             drawLine(
-                color = if (index == 0) SiagaRust else SiagaNavy.copy(alpha = 0.74f),
-                start = start,
-                end = end,
-                strokeWidth = ((if (isCardinal) 1.5f else 0.8f) * scale).dp.toPx(),
+                color = SiagaNavy.copy(alpha = if (isCardinal) 0.8f else 0.35f),
+                start = Offset(center.x + cos(angle).toFloat() * inner, center.y + sin(angle).toFloat() * inner),
+                end = Offset(center.x + cos(angle).toFloat() * outer, center.y + sin(angle).toFloat() * outer),
+                strokeWidth = (if (isCardinal) 2f else 1.2f).dp.toPx(),
                 cap = StrokeCap.Round,
             )
         }
-
-        val northNeedle = Path().apply {
-            moveTo(center.x, center.y - radius * 0.48f)
-            lineTo(center.x - radius * 0.11f, center.y + radius * 0.06f)
-            lineTo(center.x, center.y)
-            lineTo(center.x + radius * 0.11f, center.y + radius * 0.06f)
+        val needleHalfWidth = radius * 0.14f
+        val north = Path().apply {
+            moveTo(center.x, center.y - radius * 0.56f)
+            lineTo(center.x - needleHalfWidth, center.y)
+            lineTo(center.x + needleHalfWidth, center.y)
             close()
         }
-        val southNeedle = Path().apply {
-            moveTo(center.x, center.y + radius * 0.43f)
-            lineTo(center.x - radius * 0.10f, center.y - radius * 0.04f)
-            lineTo(center.x, center.y)
-            lineTo(center.x + radius * 0.10f, center.y - radius * 0.04f)
+        val south = Path().apply {
+            moveTo(center.x, center.y + radius * 0.56f)
+            lineTo(center.x - needleHalfWidth, center.y)
+            lineTo(center.x + needleHalfWidth, center.y)
             close()
         }
-        drawPath(path = northNeedle, color = SiagaRust)
-        drawPath(path = southNeedle, color = SiagaNavy)
+        drawPath(north, color = SiagaRust)
+        drawPath(south, color = SiagaNavy.copy(alpha = 0.85f))
+        drawCircle(color = Color.White, radius = radius * 0.09f, center = center)
+        drawCircle(color = SiagaNavy, radius = radius * 0.09f, center = center, style = Stroke(1.5.dp.toPx()))
     }
-}
-
-@Composable
-private fun BoxScope.CompassLabel(
-    label: String,
-    alignment: Alignment,
-    fontSize: Float,
-    scale: Float,
-    color: Color = SiagaNavy,
-) {
-    Text(
-        text = label,
-        color = color,
-        fontSize = (fontSize * scale).sp,
-        fontWeight = FontWeight.Black,
-        modifier = Modifier.align(alignment),
-    )
-}
-
-@Composable
-private fun BoxScope.CompassDiagonalLabel(
-    label: String,
-    alignment: Alignment,
-    scale: Float,
-) {
-    val horizontalOffset = when (alignment) {
-        Alignment.TopStart, Alignment.BottomStart -> (10f * scale).dp
-        else -> (-10f * scale).dp
-    }
-    val verticalOffset = when (alignment) {
-        Alignment.TopStart, Alignment.TopEnd -> (9f * scale).dp
-        else -> (-9f * scale).dp
-    }
-    Text(
-        text = label,
-        color = SiagaNavy.copy(alpha = 0.62f),
-        fontSize = (5f * scale).sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .align(alignment)
-            .offset(x = horizontalOffset, y = verticalOffset),
-    )
 }
 
 @Composable
@@ -3503,12 +3445,10 @@ internal enum class MapPanelValue {
     EXPANDED,
 }
 
-private val MAP_PANEL_SPRING = spring<Float>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMediumLow,
-)
+private val MAP_PANEL_SPRING = tween<Float>(durationMillis = 340, easing = FastOutSlowInEasing)
 
 private const val OBSTRUCTION_MESSAGE_VISIBLE_MILLIS = 8_000L
+internal const val UI_ANIMATION_MILLIS = 280
 private val TOP_BAR_SPACE = 76.dp
 private val EXPANDED_HEADER_HEIGHT = 150.dp
 private val MAP_HANDLE_SPACE = 28.dp
@@ -3529,10 +3469,10 @@ private val ZONE_SAFE_COLOR = Color(0xFF00D26A)
 private val ZONE_LOW_COLOR = Color(0xFFFFD400)
 private val ZONE_MEDIUM_COLOR = Color(0xFFFF6D00)
 private val ZONE_HIGH_COLOR = Color(0xFFFF1744)
-private const val ZONE_SAFE_MAP_OPACITY = 0.10f
-private const val ZONE_LOW_MAP_OPACITY = 0.12f
-private const val ZONE_MEDIUM_MAP_OPACITY = 0.14f
-private const val ZONE_HIGH_MAP_OPACITY = 0.16f
+private const val ZONE_SAFE_MAP_OPACITY = 0.16f
+private const val ZONE_LOW_MAP_OPACITY = 0.18f
+private const val ZONE_MEDIUM_MAP_OPACITY = 0.26f
+private const val ZONE_HIGH_MAP_OPACITY = 0.36f
 internal val STATUS_CAUTION_COLOR = Color(0xFFFFD166)
 internal val STATUS_ERROR_COLOR = Color(0xFFFF6B6B)
 private val STATUS_UNKNOWN_COLOR = Color(0xFFB9C4C9)
