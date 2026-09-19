@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -155,6 +156,15 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
     fun retryRoute() {
         initialRouteRequested = false
         mutableUiState.value.currentLocation?.let(::requestInitialRoute)
+    }
+
+    fun refreshFamilyMeetingPoint() {
+        viewModelScope.launch {
+            val meetingPoint = withContext(Dispatchers.IO) {
+                runCatching { app.familyPlanRepository.load().meetingPointName }.getOrNull()
+            }
+            mutableUiState.update { state -> state.copy(familyMeetingPointName = meetingPoint) }
+        }
     }
 
     fun refreshBmkgStatus() {

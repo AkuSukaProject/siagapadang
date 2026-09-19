@@ -83,7 +83,7 @@ private const val DEVELOPMENT_MAP_STYLE = """
         {
           "id": "background",
           "type": "background",
-          "paint": { "background-color": "#D7D3BC" }
+          "paint": { "background-color": "#0E2A47" }
         },
         {
           "id": "openstreetmap",
@@ -461,14 +461,37 @@ private fun updateOfflineRoadOverlay(
     val existingSource = style.getSource(OFFLINE_ROADS_SOURCE_ID) as? GeoJsonSource
     if (existingSource == null) {
         style.addSource(GeoJsonSource(OFFLINE_ROADS_SOURCE_ID, overlay.geoJson))
-        style.addLayer(
-            LineLayer(OFFLINE_ROADS_LAYER_ID, OFFLINE_ROADS_SOURCE_ID).withProperties(
-                lineColor("#173C49"),
-                lineWidth(2.1f),
-                lineCap(Property.LINE_CAP_ROUND),
-                lineJoin(Property.LINE_JOIN_ROUND),
-            ),
+        // Tepi gelap terbaca di atas ubin OSM yang terang; inti terang terbaca di atas latar
+        // polos gelap ketika ubin tidak tersedia. Keduanya diperlukan karena aplikasi tidak
+        // dapat mengetahui apakah ubin untuk area ini ada di cache.
+        val casingLayer = LineLayer(OFFLINE_ROADS_CASING_LAYER_ID, OFFLINE_ROADS_SOURCE_ID).withProperties(
+            lineColor("#0B1F33"),
+            lineWidth(4.2f),
+            lineCap(Property.LINE_CAP_ROUND),
+            lineJoin(Property.LINE_JOIN_ROUND),
         )
+        val roadLayer = LineLayer(OFFLINE_ROADS_LAYER_ID, OFFLINE_ROADS_SOURCE_ID).withProperties(
+            lineColor("#DCE6F0"),
+            lineWidth(2.1f),
+            lineCap(Property.LINE_CAP_ROUND),
+            lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        // Jaringan jalan selalu di bawah rute dan penanda agar garis terang tidak memotong rute.
+        val navigationAnchor = listOf(
+            PREVIOUS_ROUTES_LAYER_ID,
+            ROUTE_LAYER_ID,
+            APPROACH_ROUTE_LAYER_ID,
+            APPROACH_TARGET_LAYER_ID,
+            DESTINATION_LAYER_ID,
+            LOCATION_LAYER_ID,
+        ).firstOrNull { layerId -> style.getLayer(layerId) != null }
+        if (navigationAnchor == null) {
+            style.addLayer(casingLayer)
+            style.addLayer(roadLayer)
+        } else {
+            style.addLayerBelow(casingLayer, navigationAnchor)
+            style.addLayerBelow(roadLayer, navigationAnchor)
+        }
         tracker.offlineRoadViewportId = overlay.viewportId
     } else if (tracker.offlineRoadViewportId != overlay.viewportId) {
         existingSource.setGeoJson(overlay.geoJson)
@@ -480,9 +503,9 @@ private fun updateOfflineRoadOverlay(
     } else {
         OFFLINE_ROAD_OPACITY
     }
-    style.getLayerAs<LineLayer>(OFFLINE_ROADS_LAYER_ID)?.setProperties(
-        lineOpacity(roadOpacity),
-    )
+    listOf(OFFLINE_ROADS_CASING_LAYER_ID, OFFLINE_ROADS_LAYER_ID).forEach { layerId ->
+        style.getLayerAs<LineLayer>(layerId)?.setProperties(lineOpacity(roadOpacity))
+    }
 }
 
 private fun LatLng.toGeoCoordinate() = GeoCoordinate(
@@ -891,6 +914,7 @@ private const val USER_MARKER_BACKGROUND_ALPHA = 145
 private const val ROUTE_SOURCE_ID = "evacuation-route-source"
 private const val OFFLINE_ROADS_SOURCE_ID = "offline-roads-source"
 private const val OFFLINE_ROADS_LAYER_ID = "offline-roads-layer"
+private const val OFFLINE_ROADS_CASING_LAYER_ID = "offline-roads-casing-layer"
 private const val OFFLINE_ROAD_OPACITY = 0.78f
 private const val ONLINE_ROAD_OPACITY = 0.16f
 private const val ROUTE_LAYER_ID = "evacuation-route-layer"
