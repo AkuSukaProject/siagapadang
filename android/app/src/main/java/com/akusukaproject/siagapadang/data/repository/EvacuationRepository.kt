@@ -2,6 +2,7 @@ package com.akusukaproject.siagapadang.data.repository
 
 import com.akusukaproject.siagapadang.data.local.EvacuationDao
 import com.akusukaproject.siagapadang.data.local.RouteRow
+import com.akusukaproject.siagapadang.data.model.EvacuationPoint
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.EvacuationSummary
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
@@ -69,6 +70,17 @@ class EvacuationRepository(
                 .roundToInt(),
         )
     }
+
+    suspend fun loadEvacuationPoints(): List<EvacuationPoint> =
+        dao.findAllTes().map { tes ->
+            EvacuationPoint(
+                externalId = tes.tesId,
+                name = tes.name,
+                zoneCode = tes.zona,
+                capacityPeople = tes.kapasitas.roundToInt(),
+                coordinate = GeoCoordinate(latitude = tes.lat, longitude = tes.lon),
+            )
+        }
 
     suspend fun findRouteFromLocation(
         location: GeoCoordinate,

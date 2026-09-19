@@ -115,6 +115,7 @@ fun EvacuationScreen(
     showArrivalEvidence: Boolean = false,
     evidenceDestinationName: String = "TES tujuan",
     evidenceDestinationCapacity: Int? = null,
+    onOpenFamilyPlan: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -160,6 +161,7 @@ fun EvacuationScreen(
         onPerformCheckin = viewModel::performShelterCheckin,
         onDismissObstructionMessage = viewModel::dismissObstructionMessage,
         onReportOccupancy = viewModel::reportShelterOccupancy,
+        onOpenFamilyPlan = onOpenFamilyPlan,
     )
 }
 
@@ -179,6 +181,7 @@ private fun EvacuationContent(
     onPerformCheckin: () -> Unit,
     onDismissObstructionMessage: () -> Unit = {},
     onReportOccupancy: (String) -> Unit = {},
+    onOpenFamilyPlan: () -> Unit = {},
 ) {
     var showBlockedRouteDialog by rememberSaveable { mutableStateOf(false) }
     var showArrivalDialog by rememberSaveable(showArrivalEvidence) {
@@ -291,18 +294,23 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         }
-        DataUpdateShortcut(
-            isChecking = state.isCheckingDataUpdate,
-            onClick = {
-                showDataUpdateDialog = true
-                onCheckDataUpdates()
-            },
-            scale = scale,
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(scaled(6f)),
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = scaled(12f), top = scaled(4f))
                 .zIndex(30f),
-        )
+        ) {
+            DataUpdateShortcut(
+                isChecking = state.isCheckingDataUpdate,
+                onClick = {
+                    showDataUpdateDialog = true
+                    onCheckDataUpdates()
+                },
+                scale = scale,
+            )
+            FamilyPlanShortcut(onClick = onOpenFamilyPlan, scale = scale)
+        }
         selectedStatusDetail?.let { detail ->
             StatusDetailCard(
                 detail = detail,
@@ -535,6 +543,34 @@ private fun DataUpdateShortcut(
                 fontWeight = FontWeight.Black,
             )
         }
+    }
+}
+
+@Composable
+private fun FamilyPlanShortcut(
+    onClick: () -> Unit,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = SiagaCream,
+        contentColor = SiagaNavy,
+        shape = RoundedCornerShape((11f * scale).dp),
+        border = BorderStroke(1.dp, SiagaWarning),
+        shadowElevation = 4.dp,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Buka rencana titik temu keluarga" },
+    ) {
+        Text(
+            text = "KELUARGA",
+            fontSize = (10f * scale).sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.padding(
+                horizontal = (11f * scale).dp,
+                vertical = (10f * scale).dp,
+            ),
+        )
     }
 }
 
