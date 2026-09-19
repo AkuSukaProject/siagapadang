@@ -14,5 +14,7 @@ Daftar ini diperbarui setiap kali dependensi ditambahkan atau dihapus.
 | Google Play services Location | 21.4.0 | Pembacaan lokasi perangkat | Android Software Development Kit License |
 | Kotlin Coroutines | 1.10.2 | Aliran data sensor dan pekerjaan asinkron | Apache License 2.0 |
 | JUnit 4 | 4.13.2 | Pengujian unit | Eclipse Public License 1.0 |
+| Inter (subset Latin, 5 bobot) | Fontsource terbaru per 19 Sep 2026 | Huruf antarmuka, dibawa di APK | SIL Open Font License 1.1 |
+| Material Symbols Rounded (55 ikon vector drawable) | material-design-icons master per 19 Sep 2026 | Ikon arah, status, dan menu, dibawa di APK | Apache License 2.0 |
 
 Dependensi transitif harus diaudit kembali sebelum distribusi APK/AAB dan penyerahan dokumen GEMASTIK.

@@ -227,7 +227,7 @@ Diturunkan dari literatur perilaku darurat (Leach 2004): sebagian orang mengalam
 
 **Arah, bukan peta.** Panah besar mengikuti arah hadap perangkat. Peta hanya pendukung.
 
-**Keterbacaan pada kondisi buruk.** Kontras minimal 4.5:1 (WCAG 2.1 AA), area sentuh minimal 48×48 dp, skema gelap dengan elemen terang, hindari huruf tipis.
+**Keterbacaan pada kondisi buruk.** Kontras minimal 4.5:1 (WCAG 2.1 AA), area sentuh minimal 48×48 dp, hindari huruf tipis. Layar evakuasi memakai latar navy dengan elemen terang; layar masa tenang (menu, rencana keluarga, data, pengaturan, onboarding) memakai latar krem terang agar mudah dibaca segala usia. Kuning hanya dipakai sebagai latar dengan teks navy, tidak pernah sebagai warna teks di atas latar terang. (Diputuskan 19 September 2026, desain V3.)
 
 **Kejujuran terhadap ketidakpastian.** Kalau ada yang tidak dapat dipastikan, katakan. Jangan tampilkan layar kosong atau biarkan pengguna menduga.
 
