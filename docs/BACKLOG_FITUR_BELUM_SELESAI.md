@@ -1,6 +1,8 @@
 # Backlog Fitur SIAGA PADANG yang Belum Selesai
 
-Dokumen ini menjadi daftar kerja untuk pengembangan lanjutan SIAGA PADANG. Audit dilakukan pada branch `main`, commit `61bed05`, tanggal 14 September 2026.
+Dokumen ini menjadi daftar kerja untuk pengembangan lanjutan SIAGA PADANG. Audit awal dilakukan pada branch `main`, commit `61bed05`, tanggal 14 September 2026. **Status diperbarui 19 September 2026** setelah P0, P1-01, P1-03, P1-04, dan F-07 digabung ke `main`.
+
+Dokumen ini adalah sumber status utama. `CONTEXT.md` dan tabel status lama lainnya bersifat historis.
 
 ## Arti Status
 
@@ -8,6 +10,7 @@ Dokumen ini menjadi daftar kerja untuk pengembangan lanjutan SIAGA PADANG. Audit
 - **Sebagian**: sebagian alur sudah bekerja, tetapi belum memenuhi perilaku akhir.
 - **Backend siap**: endpoint tersedia dan sudah diuji, tetapi aplikasi Android belum memakainya.
 - **Perlu validasi**: kode tersedia, tetapi bukti pengujian atau validasi lapangan belum cukup.
+- **Selesai**: kode sudah ada di `main`. Validasi yang masih tertunda disebutkan pada masing-masing butir.
 
 ## Fitur yang Sudah Ada
 
@@ -24,12 +27,19 @@ Bagian berikut tidak perlu dibuat ulang:
 - Integrasi Android dengan status gempa terbaru BMKG melalui backend.
 - Layar peringatan ketika data resmi BMKG menyatakan potensi tsunami.
 - Backend untuk check-in, laporan hambatan, okupansi, event aktif, dan metadata sinkronisasi dasar.
+- P0-01 s/d P0-06: ID lokal di state navigasi, klien API daring, check-in, laporan jalur terhalang dengan antrean luring, okupansi TES, serta konfigurasi deployment/release.
+- Deploy otomatis backend ke Hugging Face Space melalui GitHub Actions (`.github/workflows/deploy-hf.yml`).
+- P1-01 sinkronisasi dataset aman, P1-03 kedatangan di luar zona rendaman, P1-04 orientasi terakhir setelah semua rute ditolak.
+- F-07 rencana titik temu keluarga, termasuk pengingat titik temu pada dialog kedatangan.
+- Latar peta gelap dan jaringan jalan lokal yang terbaca ketika ubin peta tidak tersedia.
 
 ## Prioritas 0 — Dikerjakan Lebih Dahulu
 
 ### P0-01 — Membawa ID Lokal sampai ke State Navigasi Android
 
-**Status:** Belum
+**Status:** Selesai — dikerjakan Habib, commit `3c2def5`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Belum
 **Tujuan:** Menyediakan ID yang diperlukan saat Android mengirim check-in dan laporan jalur.
 
 Saat ini `tes_id` dan `edge_id` ada di SQLite, tetapi belum seluruhnya dibawa ke `EvacuationRoute` dan UI state. API tidak boleh mengandalkan nama TES karena nama dapat berubah atau tidak unik.
@@ -58,7 +68,9 @@ Kriteria selesai:
 
 ### P0-02 — Infrastruktur API Android untuk Fitur Daring
 
-**Status:** Sebagian
+**Status:** Selesai — dikerjakan Habib, commit `d1f6b22`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Sebagian
 **Tujuan:** Menyediakan klien bersama untuk endpoint selain BMKG tanpa mengganggu navigasi luring.
 
 Pekerjaan:
@@ -85,7 +97,9 @@ Kriteria selesai:
 
 ### P0-03 — Check-in Keselamatan pada Android
 
-**Status:** Backend siap; Android belum
+**Status:** Selesai — dikerjakan Habib, commit `6b03e22`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Backend siap; Android belum
 **Dependensi:** P0-01 dan P0-02.
 
 Pekerjaan:
@@ -106,7 +120,9 @@ Kriteria selesai:
 
 ### P0-04 — Pengiriman Laporan Jalur Terhalang
 
-**Status:** Pergantian lokal selesai; pengiriman Android belum
+**Status:** Selesai — dikerjakan Habib, commit `8e705d8`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Pergantian lokal selesai; pengiriman Android belum
 **Dependensi:** P0-01 dan P0-02.
 
 Pekerjaan:
@@ -128,7 +144,9 @@ Kriteria selesai:
 
 ### P0-05 — Okupansi TES/TEA pada Android
 
-**Status:** Backend siap; Android belum
+**Status:** Selesai — dikerjakan Habib, commit `d3dbf7c`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Backend siap; Android belum
 **Dependensi:** P0-02 dan P0-03.
 
 Pekerjaan:
@@ -148,7 +166,9 @@ Kriteria selesai:
 
 ### P0-06 — Deployment Backend dan Konfigurasi Release Android
 
-**Status:** Belum
+**Status:** Selesai — dikerjakan Habib, commit `c885b37`, `63def35`, `b393126`, digabung ke `main` 19 September 2026. Hasil uji kriteria selesai lintas perangkat belum tercatat.
+
+**Status awal (14 September):** Belum
 **Tujuan:** Membuat fitur daring dapat dipakai tanpa `adb reverse` atau komputer pengembang.
 
 Pekerjaan:
@@ -171,7 +191,7 @@ Kriteria selesai:
 
 ### P1-01 — Sinkronisasi Dataset yang Aman
 
-**Status:** Implementasi awal selesai pada branch `feat/p1-safe-dataset-sync`; pengujian update dengan dua versi dataset nyata masih diperlukan.
+**Status:** Selesai di `main` (commit `5ddf489`); pengujian update dengan dua versi dataset nyata masih diperlukan.
 
 Implementasi saat ini menyediakan paket SQLite lengkap, metadata versi/skema/ukuran/checksum,
 unduhan ke file sementara, validasi SHA-256 dan struktur SQLite, aktivasi pada pembukaan aplikasi
@@ -196,9 +216,11 @@ Kriteria selesai:
 
 ### P1-02 — Basemap Benar-benar Luring
 
-**Status:** Belum.
+**Status:** Sebagian.
 
-Saat ini overlay lokal tetap tampil tanpa internet, tetapi ubin OpenStreetMap bergantung pada jaringan atau cache.
+Sudah: ketika ubin tidak tersedia, peta menampilkan latar navy gelap (`#0E2A47`) dengan jaringan jalan lokal bertepi gelap dan berinti terang, sehingga terbaca di atas ubin OSM maupun latar polos. Jaringan jalan selalu berada di bawah rute. Diuji tanpa cache ubin dalam mode pesawat (Infinix X6855, 19 September 2026).
+
+Belum: paket ubin luring. Ubin OpenStreetMap masih bergantung pada jaringan atau cache. Menurut `CLAUDE.md` Bagian 6 paket ubin bersifat opsional.
 
 Pekerjaan:
 
@@ -216,7 +238,7 @@ Kriteria selesai:
 
 ### P1-03 — Kedatangan di Luar Zona Rendaman
 
-**Status:** Implementasi selesai pada branch `feat/p1-arrival-zone-transition`; validasi GPS lapangan/perangkat masih ditunda.
+**Status:** Selesai di `main` (commit `9e048a6`); validasi GPS lapangan/perangkat masih ditunda.
 
 Kedatangan kini dapat dikonfirmasi melalui dua keadaan: pengguna sampai di TES/ujung rute,
 atau pengguna berpindah dari dalam ke luar poligon zona rendaman. Transisi keluar zona baru
@@ -242,7 +264,7 @@ Kriteria selesai:
 
 ### P1-04 — Fallback Setelah Semua Rute Alternatif Habis
 
-**Status:** Implementasi selesai pada branch `feat/p1-route-fallback`; validasi tampilan dan GPS pada perangkat masih ditunda.
+**Status:** Selesai di `main` (commit `3a86755`); validasi tampilan dan GPS pada perangkat masih ditunda.
 
 Rute utama dan dua alternatif tetap dapat ditandai terhalang. Setelah rute ketiga ditolak,
 aplikasi menyembunyikan seluruh garis rute yang sudah ditolak dan menampilkan orientasi terakhir
@@ -262,6 +284,12 @@ Kriteria selesai:
 
 - Aplikasi tidak macet atau kembali diam-diam ke rute yang sudah ditolak.
 - Pesan keterbatasan dan tindakan berikutnya mudah dibaca dalam satu layar.
+
+### P1-07 — TEA sebagai Tujuan Evakuasi
+
+**Status:** Belum — issue [#1](https://github.com/AkuSukaProject/siagapadang/issues/1), ditugaskan ke Habib.
+
+`ranah_siaga.db` versi `2026.09.13` hanya memuat 143 TES gedung. Seluruh tujuan `tb_routes` rank 1–3 ada di `tb_tes`; tidak ada TEA. `tb_safe_zones` (31 poligon kelurahan) dipakai untuk deteksi keluar zona, bukan sebagai titik tujuan. Pekerjaan utama ada di `spatial/`: tambahkan 29 TEA ke prakomputasi, hasilkan ulang basis data, lalu Android menambahkan label TES/TEA.
 
 ### P1-05 — Administrasi Event Darurat
 
@@ -303,9 +331,13 @@ Kriteria selesai:
 
 ### P2-01 — Rencana Evakuasi Keluarga
 
-**Status:** Belum / sebelumnya ditunda.
+**Status:** Selesai (F-07) — commit `6a7eff9` dan `b3d7fda`, diuji pada Infinix X6855 dalam mode pesawat.
 
 Fitur ini disusun pada masa tenang dan disimpan lokal. Fitur ini bukan pelacakan lokasi anggota keluarga secara langsung.
+
+Implementasi: layar Rencana Keluarga dari tombol **KELUARGA**; titik temu keluarga dan TES tujuan tiap anggota dipilih dari `tb_tes` (urut jarak) atau dari rute rank 1 di posisi HP; disimpan di `SharedPreferences`, terpisah dari `ranah_siaga.db`; dibagikan sebagai teks tanpa koordinat; titik temu ditampilkan pada dialog kedatangan.
+
+Belum: tujuan TEA (lihat P1-07) dan uji tombol **Bagikan** serta **Hapus** di perangkat.
 
 Pekerjaan:
 
@@ -374,6 +406,7 @@ Kriteria selesai:
 ### Q-01 — Pengujian Perangkat dan Kinerja
 
 - Ukur waktu dari aplikasi dibuka sampai arahan pertama tampil.
+  - Pengamatan manual 19 September 2026 (Infinix X6855): arahan tampil sekitar 1 detik dan kurang dari 2 detik. Target NF-02 adalah **< 1 detik**, jadi target ini **belum terbukti tercapai**. Perlu pengukuran dengan `System.currentTimeMillis()` pada alur baca (`CLAUDE.md` Bagian 8), minimal 10 kali per perangkat, dicatat median dan nilai terburuknya, pada empat perangkat untuk NF-04.
 - Uji mode pesawat pada instalasi bersih.
 - Uji minimal 3–5 perangkat berbeda merek dan versi Android.
 - Uji GPS buruk, izin ditolak, sensor kompas tidak tersedia, baterai hemat, rotasi layar, dan aplikasi kembali dari latar belakang.
@@ -401,10 +434,10 @@ Kriteria selesai:
 
 ### Q-05 — Rapikan Dokumentasi yang Tertinggal
 
-- Perbarui `CONTEXT.md` yang masih menyatakan Android belum dimulai.
-- Perbarui tabel status lama yang masih menyebut integrasi BMKG Android belum tersedia.
-- Perbaiki karakter rusak pada beberapa dokumen hasil konversi.
-- Jadikan dokumen ini atau satu issue tracker sebagai sumber status utama agar daftar tidak saling bertentangan.
+- ✅ `CONTEXT.md` diberi penanda dokumen historis dan status Android diperbarui (19 September 2026).
+- ✅ Dokumen ini ditetapkan sebagai sumber status utama.
+- ✅ Pemeriksaan karakter rusak pada `README.md`, `CONTEXT.md`, dan `docs/*.md` tidak menemukan masalah.
+- Selanjutnya: catat pekerjaan baru sebagai issue GitHub berjudul kode kebutuhan (`CLAUDE.md` Bagian 9) agar keterlacakan kebutuhan → kode terlihat.
 
 ## Saran Pembagian kepada Teman
 

@@ -1,6 +1,8 @@
 # CONTEXT — Briefing Proyek GEMASTIK 2026
 
-**Terakhir diperbarui:** 5 Agustus 2026
+**Terakhir diperbarui:** 5 Agustus 2026 · penanda historis ditambahkan 19 September 2026
+
+> ⚠️ **Dokumen historis.** Isi dokumen ini menggambarkan situasi per 5 Agustus 2026 dan tidak lagi diperbarui. Aturan teknis yang berlaku ada di `CLAUDE.md`; status fitur terkini ada di `docs/BACKLOG_FITUR_BELUM_SELESAI.md`. Keputusan yang ditolak pada Bagian 4 dan 5 tetap berlaku.
 
 > **Cara pakai dokumen ini.** Ini adalah briefing situasi untuk siapa pun (manusia atau AI) yang baru masuk ke proyek. Baca ini **sebelum** `PRD.md`. Dokumen ini menjelaskan *kenapa kami sampai di sini*; PRD menjelaskan *apa yang kami bangun*.
 >
@@ -12,7 +14,7 @@
 
 Tiga mahasiswa Universitas Andalas (Padang, Sumatera Barat) akan mengikuti **GEMASTIK XIX 2026, Divisi VIII — Pengembangan Perangkat Lunak**.
 
-**Status hari ini:** ide sudah dikunci, **belum ada satu baris kode pun ditulis** untuk proyek ini. Belum menghubungi BPBD. Belum mengurus administrasi kampus.
+**Status per 5 Agustus 2026:** ide sudah dikunci, **belum ada satu baris kode pun ditulis** untuk proyek ini. Belum menghubungi BPBD. Belum mengurus administrasi kampus.
 
 **Tenggat terdekat:** pendaftaran PT & tim **14 Agustus 2026** — 11 hari lagi.
 
@@ -195,7 +197,7 @@ PERISAI adalah aplikasi parental control deteksi judi online yang dibangun dalam
 | Struktur Drive & README | ✅ Selesai |
 | Nama produk | ✅ **Siaga Padang** |
 | Repo GitHub | ✅ Dibuat — pastikan tetap privat |
-| Kode Android (Kotlin) | ❌ Belum mulai |
+| Kode Android (Kotlin) | ✅ Berjalan — per 19 September 2026 fitur inti F-01 s/d F-08 tersedia; lihat `docs/BACKLOG_FITUR_BELUM_SELESAI.md` |
 | Backend (FastAPI) | 🟡 Sebagian besar endpoint selesai: sync, laporan jalur terhalang dengan validasi 3 pelapor radius 50 m, check-in atomic increment, proxy BMKG dengan cache, rate limiting per device ID |
 | Pipeline spasial (Python) | 🟡 Sedang dikerjakan |
 | Dosen pembimbing | ✅ **Nisa Dwi Angresti, S.Si., M.Kom.** (Sistem Informasi FTI Unand) — sudah konfirmasi. Pertemuan Jumat 7 Agustus |
