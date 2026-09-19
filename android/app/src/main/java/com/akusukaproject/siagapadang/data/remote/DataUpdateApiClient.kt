@@ -39,7 +39,10 @@ class DataUpdateApiClient(
                 )?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (responseCode !in 200..299) {
                 val detail = runCatching { JSONObject(responseBody).optString("detail") }.getOrNull()
-                error(detail?.takeIf { it.isNotBlank() } ?: "Backend tidak tersedia ($responseCode).")
+                throw ApiHttpException(
+                    statusCode = responseCode,
+                    message = detail?.takeIf { it.isNotBlank() } ?: "Backend tidak tersedia ($responseCode).",
+                )
             }
 
             val json = JSONObject(responseBody)
@@ -50,6 +53,7 @@ class DataUpdateApiClient(
                         val item = versionsJson.getJSONObject(index)
                         add(
                             RemoteDatasetVersion(
+                                id = item.optInt("id").takeIf { !item.isNull("id") && item.has("id") },
                                 datasetName = item.optString("dataset_name"),
                                 version = item.optString("version"),
                                 schemaVersion = item.optString("schema_version"),

@@ -7,6 +7,7 @@ data class LocalDatasetManifest(
 )
 
 data class RemoteDatasetVersion(
+    val id: Int? = null,
     val datasetName: String,
     val version: String,
     val schemaVersion: String,
@@ -29,6 +30,18 @@ data class DatasetUpdateStatus(
     val updateAvailable: Boolean
         get() = serverReportsUpdate &&
             networkVersion?.checksum?.equals(local.checksum, ignoreCase = true) == false
+
+    /**
+     * ID versi dataset di server yang isinya sama persis dengan dataset di perangkat (checksum
+     * sama). Hanya ID ini yang boleh dipakai saat melaporkan ruas jalan, karena ID ruas dari
+     * dataset yang berbeda dapat menunjuk jalan lain. Bernilai null bila server tidak memiliki
+     * dataset yang sama dengan perangkat.
+     */
+    val serverNetworkVersionIdForLocal: Int?
+        get() = latestVersions.firstOrNull { version ->
+            version.datasetName == "network" &&
+                version.checksum.equals(local.checksum, ignoreCase = true)
+        }?.id
 
     val downloadableVersion: RemoteDatasetVersion?
         get() = networkVersion?.takeIf {

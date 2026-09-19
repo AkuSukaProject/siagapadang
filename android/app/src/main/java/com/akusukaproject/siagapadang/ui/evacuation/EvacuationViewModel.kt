@@ -14,7 +14,9 @@ import com.akusukaproject.siagapadang.SiagaPadangApplication
 import com.akusukaproject.siagapadang.data.model.EvacuationRoute
 import com.akusukaproject.siagapadang.data.model.GeoCoordinate
 import com.akusukaproject.siagapadang.data.model.InundationZoneStatus
+import com.akusukaproject.siagapadang.data.remote.ApiHttpException
 import com.akusukaproject.siagapadang.data.remote.model.ObstructionReportRequestDto
+import com.akusukaproject.siagapadang.data.repository.ObstructionDeliverySummary
 import com.akusukaproject.siagapadang.data.remote.model.OccupancyReportRequestDto
 import com.akusukaproject.siagapadang.data.remote.model.ShelterCheckinRequestDto
 import kotlinx.coroutines.Dispatchers
@@ -397,7 +399,8 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
         val report = ObstructionReportRequestDto(
             latitude = location.latitude,
             longitude = location.longitude,
-            datasetVersionId = 1,
+            // ID versi dataset server baru ditentukan saat laporan dikirim.
+            datasetVersionId = UNRESOLVED_DATASET_VERSION_ID,
             edgeExternalId = blockedEdgeId.toString(),
             description = "Jalur terhalang dilaporkan warga via aplikasi",
         )
@@ -419,48 +422,93 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
 
-            var anySent = false
-            var confirmedCount = 0
-            for (report in pendingReports) {
-                val result = app.emergencyApiClient.reportObstruction(report)
-                result.onSuccess { response ->
-                    app.obstructionReportQueue.remove(report.edgeExternalId)
-                    anySent = true
-                    if (response.isConfirmedBlocked) {
-                        confirmedCount++
+            val summary = resolveServerDatasetVersionId().fold(
+                onSuccess = { serverVersionId ->
+                    if (serverVersionId == null) {
+                        // ID ruas di HP bisa menunjuk jalan lain pada dataset server yang berbeda,
+                        // sehingga laporan tidak dikirim dan tidak diulang.
+                        app.obstructionReportQueue.clear()
+                        ObstructionDeliverySummary(isDatasetMismatch = true)
+                    } else {
+                        sendPendingObstructionReports(pendingReports, serverVersionId)
                     }
-                }.onFailure {
-                    // Tetap tersimpan di antrean luring
-                }
-            }
+                },
+                onFailure = { error ->
+                    val remaining = pendingReports.size
+                    if (error is ApiHttpException) {
+                        ObstructionDeliverySummary(serverErrorCount = remaining, remainingCount = remaining)
+                    } else {
+                        ObstructionDeliverySummary(offlineCount = remaining, remainingCount = remaining)
+                    }
+                },
+            )
 
-            val remainingCount = app.obstructionReportQueue.getPendingReports().size
             mutableUiState.update { state ->
                 state.copy(
-                    pendingObstructionCount = remainingCount,
-                    obstructionReportMessage = when {
-                        confirmedCount > 0 -> "Ruas jalan kini ditandai putus untuk semua pengguna."
-                        anySent && remainingCount == 0 -> "Laporan jalan terhalang diterima posko bencana."
-                        remainingCount > 0 -> "Laporan tersimpan luring ($remainingCount). Akan dikirim saat sinyal tersedia."
-                        else -> state.obstructionReportMessage
-                    },
+                    pendingObstructionCount = summary.remainingCount,
+                    obstructionReportMessage = summary.message() ?: state.obstructionReportMessage,
                 )
             }
         }
     }
 
-    fun refreshConfirmedObstructions() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = app.emergencyApiClient.getConfirmedObstructions()
-            result.onSuccess { externalIds ->
-                val edgeIds = externalIds.mapNotNull { it.toLongOrNull() }.toSet()
-                if (edgeIds.isNotEmpty()) {
-                    mutableUiState.update { state ->
-                        state.copy(confirmedBlockedEdgeIds = state.confirmedBlockedEdgeIds + edgeIds)
+    private suspend fun sendPendingObstructionReports(
+        pendingReports: List<ObstructionReportRequestDto>,
+        serverVersionId: Int,
+    ): ObstructionDeliverySummary {
+        var summary = ObstructionDeliverySummary()
+        for (report in pendingReports) {
+            app.emergencyApiClient
+                .reportObstruction(report.copy(datasetVersionId = serverVersionId))
+                .onSuccess { response ->
+                    app.obstructionReportQueue.remove(report.edgeExternalId)
+                    summary = summary.copy(
+                        sentCount = summary.sentCount + 1,
+                        confirmedCount = summary.confirmedCount +
+                            if (response.isConfirmedBlocked) 1 else 0,
+                    )
+                }
+                .onFailure { error ->
+                    summary = when {
+                        error is ApiHttpException && error.isRejectedByServer -> {
+                            // Penolakan 4xx tidak berubah bila diulang, jadi dikeluarkan dari antrean.
+                            app.obstructionReportQueue.remove(report.edgeExternalId)
+                            summary.copy(
+                                rejectedCount = summary.rejectedCount + 1,
+                                rejectionReason = error.message,
+                            )
+                        }
+                        error is ApiHttpException ->
+                            summary.copy(serverErrorCount = summary.serverErrorCount + 1)
+                        else -> summary.copy(offlineCount = summary.offlineCount + 1)
                     }
                 }
-            }
         }
+        return summary.copy(remainingCount = app.obstructionReportQueue.getPendingReports().size)
+    }
+
+    fun refreshConfirmedObstructions() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Ruas terkonfirmasi hanya dipakai bila dataset server sama dengan dataset di HP.
+            val serverVersionId = resolveServerDatasetVersionId().getOrNull() ?: return@launch
+            app.emergencyApiClient.getConfirmedObstructions(serverVersionId)
+                .onSuccess { externalIds ->
+                    val edgeIds = externalIds.mapNotNull { it.toLongOrNull() }.toSet()
+                    if (edgeIds.isNotEmpty()) {
+                        mutableUiState.update { state ->
+                            state.copy(confirmedBlockedEdgeIds = state.confirmedBlockedEdgeIds + edgeIds)
+                        }
+                    }
+                }
+        }
+    }
+
+    /**
+     * ID versi dataset server yang checksum-nya sama dengan dataset di HP. Sukses dengan null
+     * berarti server terjangkau tetapi tidak memiliki dataset yang sama.
+     */
+    private suspend fun resolveServerDatasetVersionId(): Result<Int?> = runCatching {
+        app.dataUpdateApiClient.checkForUpdates().serverNetworkVersionIdForLocal
     }
 
     fun dismissObstructionMessage() {
@@ -1008,6 +1056,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
 
     companion object {
         private const val LOG_TAG = "EvacuationTiming"
+        private const val UNRESOLVED_DATASET_VERSION_ID = 0
         private const val MANEUVER_ALERT_DISTANCE_METERS = 30
         private const val MIN_ZONE_CHECK_MOVEMENT_METERS = 12.0
         private const val MAX_ZONE_CHECK_INTERVAL_MILLIS = 1_500L

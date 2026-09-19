@@ -131,7 +131,10 @@ class EmergencyApiClient(
 
             if (responseCode !in 200..299) {
                 val detail = runCatching { JSONObject(responseBody).optString("detail") }.getOrNull()
-                error(detail?.takeIf { it.isNotBlank() } ?: "Backend mengembalikan status $responseCode")
+                throw ApiHttpException(
+                    statusCode = responseCode,
+                    message = detail?.takeIf { it.isNotBlank() } ?: "Backend mengembalikan status $responseCode",
+                )
             }
             responseBody
         } finally {
@@ -163,7 +166,10 @@ class EmergencyApiClient(
 
             if (responseCode !in 200..299) {
                 val detail = runCatching { JSONObject(responseBody).optString("detail") }.getOrNull()
-                error(detail?.takeIf { it.isNotBlank() } ?: "Permintaan gagal diproses server ($responseCode)")
+                throw ApiHttpException(
+                    statusCode = responseCode,
+                    message = detail?.takeIf { it.isNotBlank() } ?: "Permintaan gagal diproses server ($responseCode)",
+                )
             }
             responseBody
         } finally {
