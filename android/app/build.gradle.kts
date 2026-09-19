@@ -24,7 +24,7 @@ android {
     buildTypes {
         debug {
             val backendUrl = providers.gradleProperty("SIAGA_BACKEND_BASE_URL")
-                .orElse("http://127.0.0.1:8000/")
+                .orElse("https://siagapadang-production.up.railway.app/")
                 .get()
             buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -32,7 +32,7 @@ android {
         release {
             val backendUrl = providers.gradleProperty("SIAGA_BACKEND_BASE_URL")
                 .orElse(providers.environmentVariable("SIAGA_BACKEND_BASE_URL"))
-                .orElse("https://siagapadang.id/")
+                .orElse("https://siagapadang-production.up.railway.app/")
                 .get()
             val usesCleartext = backendUrl.startsWith("http://")
             buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
