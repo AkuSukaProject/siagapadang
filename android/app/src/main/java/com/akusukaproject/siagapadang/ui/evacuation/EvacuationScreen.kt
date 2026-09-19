@@ -102,6 +102,9 @@ import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import com.akusukaproject.siagapadang.ui.map.OfflineMap
 import com.akusukaproject.siagapadang.ui.theme.SiagaCream
 import com.akusukaproject.siagapadang.ui.theme.SiagaNavy
+import com.akusukaproject.siagapadang.ui.theme.SiagaLine
+import com.akusukaproject.siagapadang.ui.theme.SiagaCalmBackground
+import com.akusukaproject.siagapadang.ui.theme.SiagaSafeGreen
 import com.akusukaproject.siagapadang.ui.theme.SiagaOnNavyMuted
 import com.akusukaproject.siagapadang.ui.theme.SiagaNextGreen
 import com.akusukaproject.siagapadang.ui.theme.SiagaRust
@@ -2873,10 +2876,10 @@ private fun BlockedRouteDialog(
 @Composable
 private fun FamilyMeetingPointReminder(meetingPointName: String) {
     Surface(
-        color = Color.White,
+        color = SiagaCalmBackground,
         contentColor = SiagaNavy,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.5.dp, SiagaNavy),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, SiagaLine),
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
@@ -2934,31 +2937,31 @@ private fun ArrivalDialog(
         ),
     ) {
         Surface(
-            color = SiagaCream,
+            color = Color.White,
             contentColor = SiagaNavy,
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(2.dp, SiagaNavy),
+            shape = RoundedCornerShape(30.dp),
             shadowElevation = 12.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 20.dp),
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
             ) {
                 Surface(
-                    color = SiagaNextGreen.copy(alpha = 0.24f),
+                    color = Color(0xFFDDF1E5),
                     shape = CircleShape,
-                    modifier = Modifier.size(84.dp),
+                    modifier = Modifier.size(76.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_figma_destination),
+                        Icon(
+                            painter = painterResource(R.drawable.ic_ms_where_to_vote),
                             contentDescription = null,
-                            modifier = Modifier.size(52.dp),
+                            tint = SiagaSafeGreen,
+                            modifier = Modifier.size(42.dp),
                         )
                     }
                 }
@@ -2967,7 +2970,7 @@ private fun ArrivalDialog(
                     text = if (arrivedOutsideZone) {
                         "Anda berada di luar zona rendaman"
                     } else {
-                        "Anda telah sampai di TES"
+                        "Anda sudah sampai di TES"
                     },
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
@@ -3301,13 +3304,14 @@ private fun ArrivalDialog(
                 Button(
                     onClick = onAcknowledge,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SiagaNextGreen,
+                        containerColor = SiagaWarning,
                         contentColor = SiagaNavy,
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(2.dp, SiagaNavy),
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(56.dp),
                 ) {
                     Text(
                         text = "Saya mengerti",
