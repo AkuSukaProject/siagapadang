@@ -123,6 +123,41 @@ internal fun EvacuationTopBar(
 }
 
 @Composable
+internal fun StatusColumnV3(
+    state: EvacuationUiState,
+    selected: StatusDetailType?,
+    onSelect: (StatusDetailType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier) {
+        StatusCircle(
+            iconRes = R.drawable.ic_ms_my_location,
+            tint = statusTintOnLight(gpsStatusColor(state)),
+            hasProblem = gpsHasProblem(state),
+            selected = selected == StatusDetailType.GPS,
+            description = "Lihat status GPS",
+            onClick = { onSelect(StatusDetailType.GPS) },
+        )
+        StatusCircle(
+            iconRes = if (state.isNetworkAvailable == false) R.drawable.ic_ms_wifi_off else R.drawable.ic_ms_wifi,
+            tint = statusTintOnLight(networkStatusColor(state.isNetworkAvailable)),
+            hasProblem = state.isNetworkAvailable == false,
+            selected = selected == StatusDetailType.NETWORK,
+            description = "Lihat status jaringan",
+            onClick = { onSelect(StatusDetailType.NETWORK) },
+        )
+        StatusCircle(
+            iconRes = R.drawable.ic_ms_warning,
+            tint = statusTintOnLight(bmkgStatusColor(state)),
+            hasProblem = bmkgHasProblem(state),
+            selected = selected == StatusDetailType.BMKG,
+            description = "Lihat informasi BMKG",
+            onClick = { onSelect(StatusDetailType.BMKG) },
+        )
+    }
+}
+
+@Composable
 internal fun StatusCircle(
     iconRes: Int,
     tint: Color,

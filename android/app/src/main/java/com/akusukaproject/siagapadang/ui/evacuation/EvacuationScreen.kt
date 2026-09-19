@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -101,6 +102,7 @@ import com.akusukaproject.siagapadang.domain.RouteGuidanceSnapshot
 import com.akusukaproject.siagapadang.ui.map.OfflineMap
 import com.akusukaproject.siagapadang.ui.theme.SiagaCream
 import com.akusukaproject.siagapadang.ui.theme.SiagaNavy
+import com.akusukaproject.siagapadang.ui.theme.SiagaOnNavyMuted
 import com.akusukaproject.siagapadang.ui.theme.SiagaNextGreen
 import com.akusukaproject.siagapadang.ui.theme.SiagaRust
 import com.akusukaproject.siagapadang.ui.theme.SiagaWarning
@@ -259,7 +261,7 @@ private fun EvacuationContent(
         )
 
         val handleTop = maxHeight - mapHeight +
-            lerp((-24f * scale).dp, (111f * scale).dp, expansionProgress)
+            lerp((-24f * scale).dp, EXPANDED_HEADER_HEIGHT - 40.dp, expansionProgress)
         MapOpenHandle(
             expansionProgress = expansionProgress,
             dragState = mapPanelState,
@@ -296,16 +298,16 @@ private fun EvacuationContent(
                     .zIndex(30f),
             )
         } else {
-            StatusIconColumn(
+            StatusColumnV3(
                 state = state,
                 selected = selectedStatusDetail,
                 onSelect = { detail ->
                     selectedStatusDetail = if (selectedStatusDetail == detail) null else detail
                 },
-                scale = scale,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = scaled(111f), top = scaled(17f))
+                    .align(Alignment.TopStart)
+                    .padding(start = 16.dp, top = EXPANDED_HEADER_HEIGHT + 12.dp)
+                    .graphicsLayer(alpha = expansionProgress)
                     .zIndex(30f),
             )
         }
@@ -318,11 +320,9 @@ private fun EvacuationContent(
                 scale = scale,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(
-                        end = if (expansionProgress < 0.5f) 16.dp else scaled(111f),
-                    )
+                    .padding(end = 16.dp)
                     .offset(
-                        y = if (expansionProgress < 0.5f) 66.dp else scaled(105f),
+                        y = if (expansionProgress < 0.5f) 66.dp else EXPANDED_HEADER_HEIGHT + 12.dp,
                     )
                     .zIndex(31f),
             )
@@ -1796,7 +1796,7 @@ private fun EvacuationMapPanel(
                 scale = scale,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = (-8f * scale).dp, y = (211f * scale).dp)
+                    .offset(x = (-16).dp, y = EXPANDED_HEADER_HEIGHT + 84.dp)
                     .graphicsLayer(alpha = expansionProgress),
             )
         }
@@ -1808,7 +1808,7 @@ private fun EvacuationMapPanel(
                 .align(Alignment.TopEnd)
                 .offset(
                     x = -lerp((12f * scale).dp, (14f * scale).dp, expansionProgress),
-                    y = lerp((18f * scale).dp, (139f * scale).dp, expansionProgress),
+                    y = lerp((18f * scale).dp, EXPANDED_HEADER_HEIGHT + 12.dp, expansionProgress),
                 )
                 .size(lerp((68f * scale).dp, (64f * scale).dp, expansionProgress)),
         )
@@ -2407,89 +2407,72 @@ private fun ExpandedMapHeader(
     modifier: Modifier = Modifier,
 ) {
     val isApproachingRoute = guidance?.isApproachingRoute == true
-    val displayedDestinationName = route.destinationName
     val instruction = guidance?.currentInstruction ?: ManeuverGuidance(
         ManeuverType.STRAIGHT,
         estimatedDistanceMeters(route),
     )
-    Box(
+    val presentation = maneuverPresentation(instruction.type)
+    val label = maneuverInstructionLabel(presentation.label, instruction.type, isApproachingRoute)
+    Surface(
+        color = SiagaNavy,
+        contentColor = Color.White,
+        shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
+        shadowElevation = 6.dp,
         modifier = modifier
             .fillMaxWidth()
-            .height((190f * scale).dp),
+            .height(EXPANDED_HEADER_HEIGHT),
     ) {
-        Surface(
-            color = SiagaNavy,
-            shape = RoundedCornerShape(
-                bottomStart = (15f * scale).dp,
-                bottomEnd = (15f * scale).dp,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height((135f * scale).dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 34.dp),
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Surface(
+                color = Color.White,
+                contentColor = SiagaNavy,
+                shape = RoundedCornerShape(22.dp),
+                modifier = Modifier.size(84.dp),
+            ) {
                 Column(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = (20f * scale).dp, top = (15f * scale).dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
+                    Icon(
+                        painterResource(presentation.drawableRes),
+                        contentDescription = label,
+                        modifier = Modifier.size(46.dp),
+                    )
                     Text(
-                        text = displayedDestinationName,
-                        color = SiagaCream,
-                        fontSize = (expandedDestinationFontSize(displayedDestinationName) * scale).sp,
-                        lineHeight = (
-                            (expandedDestinationFontSize(displayedDestinationName) + 1f) * scale
-                            ).sp,
+                        text = if (instruction.type == ManeuverType.ARRIVE) "TES" else formatDistance(instruction.distanceMeters),
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width((205f * scale).dp),
-                    )
-                    Text(
-                        text = formatDistance(
-                            guidance?.remainingDistanceMeters ?: estimatedDistanceMeters(route),
-                        ),
-                        color = SiagaCream,
-                        fontSize = (32f * scale).sp,
-                        fontWeight = FontWeight.Light,
-                    )
-                    Spacer(modifier = Modifier.height((6f * scale).dp))
-                    Text(
-                        text = "Berjalan cepat ±${estimatedMinutes(route)} menit",
-                        color = SiagaCream,
-                        fontSize = (15f * scale).sp,
                     )
                 }
-
-                CompactManeuverCard(
-                    instruction = instruction,
-                    isApproachingRoute = isApproachingRoute,
-                    scale = scale,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = (15f * scale).dp, end = (15f * scale).dp),
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = label, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Text(
+                    text = "Menuju ${route.destinationName}",
+                    color = SiagaOnNavyMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-
-        Surface(
-            color = SiagaNavy,
-            shape = RoundedCornerShape((6f * scale).dp),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (145f * scale).dp)
-                .height((34f * scale).dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.padding(horizontal = (10f * scale).dp),
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                color = SiagaWarning,
+                contentColor = SiagaNavy,
+                shape = RoundedCornerShape(16.dp),
             ) {
-                Text(
-                    text = formatDuration(remainingSeconds, spaced = true),
-                    color = SiagaCream,
-                    fontSize = (20f * scale).sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text("SISA", fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                    Text(formatDuration(remainingSeconds), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                }
             }
         }
     }
@@ -2547,42 +2530,37 @@ private fun VerticalInstructionStrip(
     scale: Float,
     modifier: Modifier = Modifier,
 ) {
-    val instructions = guidance?.instructions.orEmpty().ifEmpty {
-        listOf(ManeuverGuidance(ManeuverType.STRAIGHT, 0))
-    }.take(4)
-    val adaptiveHeight = (
-        EXPANDED_STRIP_BASE_HEIGHT_DP +
-            (instructions.size - 1) * EXPANDED_STRIP_STEP_HEIGHT_DP
-        ) * scale
+    // Langkah saat ini sudah tampil besar di header, jadi strip hanya berisi langkah sesudahnya.
+    val nextSteps = guidance?.instructions.orEmpty().drop(1).take(MAX_VISIBLE_INSTRUCTIONS)
+    if (nextSteps.isEmpty()) return
     Surface(
         color = SiagaNavy,
         contentColor = Color.White,
-        shape = RoundedCornerShape((32f * scale).dp),
-        border = BorderStroke(1.dp, Color(0xFFB9B9B9)),
-        modifier = modifier
-            .width((53f * scale).dp)
-            .height(adaptiveHeight.dp),
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 6.dp,
+        modifier = modifier.width(58.dp),
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.padding(vertical = (10f * scale).dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(vertical = 12.dp),
         ) {
-            instructions.forEachIndexed { index, instruction ->
-                val presentation = maneuverPresentation(instruction.type)
-                MiniInstruction(
-                    drawableRes = presentation.drawableRes,
-                    label = if (instruction.type == ManeuverType.ARRIVE) {
-                        "TES"
-                    } else {
-                        formatDistance(instruction.distanceMeters)
-                    },
-                    rotationDegrees = presentation.assetRotationDegrees,
-                    tint = instruction.type != ManeuverType.ARRIVE,
-                    contentColor = if (index == 0) Color.White else SiagaNextGreen,
-                    scale = scale,
-                )
-                if (index < instructions.lastIndex) StepDot(scale, SiagaNextGreen)
+            Text("Lalu", color = SiagaOnNavyMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            nextSteps.forEach { step ->
+                val presentation = maneuverPresentation(step.type)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        painterResource(presentation.drawableRes),
+                        contentDescription = presentation.label,
+                        tint = SiagaNextGreen,
+                        modifier = Modifier.size(26.dp),
+                    )
+                    Text(
+                        text = if (step.type == ManeuverType.ARRIVE) "TES" else formatDistance(step.distanceMeters),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
@@ -3528,6 +3506,7 @@ private val MAP_PANEL_SPRING = spring<Float>(
 
 private const val OBSTRUCTION_MESSAGE_VISIBLE_MILLIS = 8_000L
 private val TOP_BAR_SPACE = 76.dp
+private val EXPANDED_HEADER_HEIGHT = 150.dp
 private val MAP_HANDLE_SPACE = 28.dp
 private val MIN_COLLAPSED_MAP_HEIGHT = 170.dp
 private const val FIGMA_WIDTH_DP = 390f
