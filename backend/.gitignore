@@ -1,22 +1,21 @@
 
-# Secrets and local environments
-.env
-.venv/
-venv/
-
-# Python-generated files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# Pytest / Cache
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
+.coverage
+htmlcov/
 
-# Runtime cache and local database artifacts
-cache/
-*.db
-*.sqlite
-
-# Experimental scripts
+# Experimental Scripts
 scripts/download_jurnal.py
 scripts/generate_fixed_csv.py
 scripts/geocode_*.py

@@ -1,45 +1,19 @@
+version: '3.8'
+
 services:
   db:
     image: kartoza/postgis:15-3.4
     container_name: postgis_evakuasi
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-siaga_padang}
-      POSTGRES_PASS: ${POSTGRES_PASS:?POSTGRES_PASS belum diatur}
-      POSTGRES_DB: ${POSTGRES_DB:-evakuasi_padang}
-      ALLOW_IP_RANGE: ${ALLOW_IP_RANGE:-0.0.0.0/0}
+      - POSTGRES_USER=sheva
+      - POSTGRES_PASS=gemastik2026
+      - POSTGRES_DB=evakuasi_padang
+      - ALLOW_IP_RANGE=0.0.0.0/0
     ports:
       - "5432:5432"
     volumes:
       - postgis_data:/var/lib/postgresql
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-siaga_padang} -d $${POSTGRES_DB:-evakuasi_padang}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: siaga_padang_api
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-siaga_padang}:${POSTGRES_PASS}@db:5432/${POSTGRES_DB:-evakuasi_padang}}
-      HMAC_SECRET: ${HMAC_SECRET:?HMAC_SECRET belum diatur}
-      DATASET_PACKAGE_PATH: /data/ranah_siaga.db
-    ports:
-      - "8000:8000"
-    volumes:
-      - ../android/app/src/main/assets/ranah_siaga.db:/data/ranah_siaga.db:ro
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
+    restart: on-failure
 
 volumes:
   postgis_data:
