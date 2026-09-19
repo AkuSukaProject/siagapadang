@@ -615,7 +615,7 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             mutableUiState.update {
                 it.copy(
                     isReportingOccupancy = true,
-                    occupancyReportMessage = "Mengirim laporan kondisi shelter...",
+                    occupancyReportMessage = "Mengirim laporan kondisi TES...",
                 )
             }
             val result = app.emergencyApiClient.reportOccupancy(
@@ -629,14 +629,14 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
                     it.copy(
                         isReportingOccupancy = false,
                         occupancyStatus = statusResponse,
-                        occupancyReportMessage = "Terima kasih, laporan kondisi shelter berhasil diperbarui!",
+                        occupancyReportMessage = "Terima kasih, laporan kondisi TES berhasil diperbarui.",
                     )
                 }
             }.onFailure { error ->
                 mutableUiState.update {
                     it.copy(
                         isReportingOccupancy = false,
-                        occupancyReportMessage = error.message ?: "Gagal mengirim laporan kondisi shelter.",
+                        occupancyReportMessage = error.message ?: "Gagal mengirim laporan kondisi TES.",
                     )
                 }
             }

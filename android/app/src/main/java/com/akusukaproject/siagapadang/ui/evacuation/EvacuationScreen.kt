@@ -243,7 +243,10 @@ private fun EvacuationContent(
             mapHeight = mapHeight,
             scale = scale,
             expansionProgress = expansionProgress,
-            onBlockedRouteClick = { showBlockedRouteDialog = true },
+            onBlockedRouteClick = {
+                selectedStatusDetail = null
+                showBlockedRouteDialog = true
+            },
             onMapViewportChanged = onMapViewportChanged,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -309,12 +312,19 @@ private fun EvacuationContent(
             DataUpdateShortcut(
                 isChecking = state.isCheckingDataUpdate,
                 onClick = {
+                    selectedStatusDetail = null
                     showDataUpdateDialog = true
                     onCheckDataUpdates()
                 },
                 scale = scale,
             )
-            FamilyPlanShortcut(onClick = onOpenFamilyPlan, scale = scale)
+            FamilyPlanShortcut(
+                onClick = {
+                    selectedStatusDetail = null
+                    onOpenFamilyPlan()
+                },
+                scale = scale,
+            )
         }
         selectedStatusDetail?.let { detail ->
             StatusDetailCard(
@@ -407,6 +417,11 @@ private fun EvacuationContent(
         }
 
         state.obstructionReportMessage?.let { message ->
+            // Banner menutupi sebagian kartu arah, jadi ditampilkan sementara saja.
+            LaunchedEffect(message) {
+                delay(OBSTRUCTION_MESSAGE_VISIBLE_MILLIS)
+                onDismissObstructionMessage()
+            }
             Surface(
                 color = SiagaCream,
                 contentColor = SiagaNavy,
@@ -415,8 +430,9 @@ private fun EvacuationContent(
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 10.dp, start = 14.dp, end = 14.dp)
-                    .fillMaxWidth(),
+                    .padding(top = scaled(52f), start = 14.dp, end = 14.dp)
+                    .fillMaxWidth()
+                    .zIndex(32f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -431,7 +447,7 @@ private fun EvacuationContent(
                     )
                     IconButton(
                         onClick = onDismissObstructionMessage,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Image(
                             painter = painterResource(R.drawable.ic_figma_close),
@@ -2850,7 +2866,7 @@ private fun BlockedRouteDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 20.dp),
+                        .padding(top = 20.dp, start = 24.dp, end = 24.dp),
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_figma_dialog_warning),
@@ -3594,6 +3610,7 @@ private val MAP_PANEL_SPRING = spring<Float>(
     stiffness = Spring.StiffnessMediumLow,
 )
 
+private const val OBSTRUCTION_MESSAGE_VISIBLE_MILLIS = 8_000L
 private const val FIGMA_WIDTH_DP = 390f
 private const val FIGMA_MAP_HEIGHT_DP = 269f
 private const val WALKING_SPEED_METERS_PER_SECOND = 1.2
