@@ -43,6 +43,7 @@ object RouteGuidanceCalculator {
         minimumRouteIndex: Int = 0,
         minimumSegmentFraction: Double = 0.0,
         deviceHeadingDegrees: Float? = null,
+        previousApproachType: ManeuverType? = null,
     ): RouteGuidanceSnapshot? {
         if (routeCoordinates.isEmpty() || maxInstructions <= 0) return null
 
@@ -126,7 +127,10 @@ object RouteGuidanceCalculator {
             )
             val approachType = deviceHeadingDegrees?.let { heading ->
                 classifyApproachDirection(
-                    BearingCalculator.relativeRotationDegrees(targetBearing, heading.toDouble()).toDouble(),
+                    relativeBearingDegrees = BearingCalculator
+                        .relativeRotationDegrees(targetBearing, heading.toDouble())
+                        .toDouble(),
+                    previousType = previousApproachType,
                 )
             } ?: ManeuverType.STRAIGHT
             listOf(
@@ -199,7 +203,21 @@ object RouteGuidanceCalculator {
         }
     }
 
-    private fun classifyApproachDirection(relativeBearingDegrees: Double): ManeuverType {
+    /**
+     * Arah menuju rute dari sudut relatif terhadap arah hadap perangkat. Instruksi sebelumnya
+     * dipertahankan selama sudut masih berada dalam rentangnya ditambah [APPROACH_HYSTERESIS_DEGREES],
+     * agar getaran kecil kompas dan GPS di dekat batas tidak membuat instruksi berganti-ganti.
+     */
+    internal fun classifyApproachDirection(
+        relativeBearingDegrees: Double,
+        previousType: ManeuverType? = null,
+    ): ManeuverType {
+        if (
+            previousType != null &&
+            approachRangeContains(previousType, relativeBearingDegrees, APPROACH_HYSTERESIS_DEGREES)
+        ) {
+            return previousType
+        }
         val magnitude = abs(relativeBearingDegrees)
         if (magnitude <= APPROACH_STRAIGHT_ANGLE_DEGREES) return ManeuverType.STRAIGHT
         if (magnitude >= APPROACH_U_TURN_ANGLE_DEGREES) return ManeuverType.U_TURN
@@ -208,6 +226,28 @@ object RouteGuidanceCalculator {
             if (isRight) ManeuverType.SLIGHT_RIGHT else ManeuverType.SLIGHT_LEFT
         } else {
             if (isRight) ManeuverType.RIGHT else ManeuverType.LEFT
+        }
+    }
+
+    private fun approachRangeContains(
+        type: ManeuverType,
+        relativeBearingDegrees: Double,
+        marginDegrees: Double,
+    ): Boolean {
+        val magnitude = abs(relativeBearingDegrees)
+        val isRight = relativeBearingDegrees > 0.0
+        val slightRange = (APPROACH_STRAIGHT_ANGLE_DEGREES - marginDegrees)..
+            (APPROACH_SLIGHT_ANGLE_DEGREES + marginDegrees)
+        val turnRange = (APPROACH_SLIGHT_ANGLE_DEGREES - marginDegrees)..
+            (APPROACH_U_TURN_ANGLE_DEGREES + marginDegrees)
+        return when (type) {
+            ManeuverType.STRAIGHT -> magnitude <= APPROACH_STRAIGHT_ANGLE_DEGREES + marginDegrees
+            ManeuverType.SLIGHT_RIGHT -> isRight && magnitude in slightRange
+            ManeuverType.SLIGHT_LEFT -> !isRight && magnitude in slightRange
+            ManeuverType.RIGHT -> isRight && magnitude in turnRange
+            ManeuverType.LEFT -> !isRight && magnitude in turnRange
+            ManeuverType.U_TURN -> magnitude >= APPROACH_U_TURN_ANGLE_DEGREES - marginDegrees
+            else -> false
         }
     }
 
@@ -229,5 +269,6 @@ object RouteGuidanceCalculator {
     private const val APPROACH_STRAIGHT_ANGLE_DEGREES = 22.5
     private const val APPROACH_SLIGHT_ANGLE_DEGREES = 60.0
     private const val APPROACH_U_TURN_ANGLE_DEGREES = 150.0
+    private const val APPROACH_HYSTERESIS_DEGREES = 15.0
     private const val DEFAULT_MAX_INSTRUCTIONS = 4
 }

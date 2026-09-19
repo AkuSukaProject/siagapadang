@@ -909,6 +909,10 @@ class EvacuationViewModel(application: Application) : AndroidViewModel(applicati
             minimumRouteIndex = minimumRouteIndex,
             minimumSegmentFraction = minimumRouteSegmentFraction,
             deviceHeadingDegrees = state.deviceHeadingDegrees,
+            previousApproachType = state.guidance
+                ?.takeIf(RouteGuidanceSnapshot::isApproachingRoute)
+                ?.currentInstruction
+                ?.type,
         )
         guidance?.let { snapshot ->
             when {
